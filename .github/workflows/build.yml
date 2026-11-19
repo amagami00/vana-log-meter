@@ -1,0 +1,122 @@
+# 配布用のアプリをビルドし、zip にまとめる。
+# - 手動実行（Actions タブの Run workflow）: 選んだ OS をビルドし、成果物に残す。
+# - タグ `v1.2.3` の push: 両 OS をビルドし、GitHub Release に zip を添付する。
+# 非公開リポジトリでは Windows は 2 倍、macOS は 10 倍の分数で数えられる。
+name: build
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: ビルドする OS
+        type: choice
+        options: [windows, macos, both]
+        default: windows
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.50.0
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.v.outputs.name }}
+    steps:
+      - id: v
+        name: タグからバージョンを決める（手動実行ではアプリの既定値）
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            if ! [[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "タグは v1.2.3 の形にする: $REF" >&2
+              exit 1
+            fi
+            echo "name=${REF#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+  windows:
+    needs: version
+    if: github.event_name == 'push' || inputs.target == 'windows' || inputs.target == 'both'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUILD_NAME: ${{ needs.version.outputs.name }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: テスト（Windows のパス区切りでも通るか）
+        run: |
+          cd packages/vana_log_core
+          dart pub get
+          dart test
+          cd ../../app
+          flutter pub get
+          flutter test
+      - name: ビルド
+        working-directory: app
+        run: flutter build windows --release ${BUILD_NAME:+--build-name "$BUILD_NAME"}
+      - name: zip にまとめる
+        shell: pwsh
+        run: Compress-Archive -Path app/build/windows/x64/runner/Release/* -DestinationPath vana_log_meter-windows.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vana_log_meter-windows
+          path: vana_log_meter-windows.zip
+          retention-days: 14
+
+  macos:
+    needs: version
+    if: github.event_name == 'push' || inputs.target == 'macos' || inputs.target == 'both'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      BUILD_NAME: ${{ needs.version.outputs.name }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: ビルド
+        working-directory: app
+        run: flutter build macos --release ${BUILD_NAME:+--build-name "$BUILD_NAME"}
+      - name: zip にまとめる
+        run: ditto -c -k --keepParent app/build/macos/Build/Products/Release/vana_log_meter.app vana_log_meter-macos.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vana_log_meter-macos
+          path: vana_log_meter-macos.zip
+          retention-days: 14
+
+  release:
+    needs: [windows, macos]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release を作って zip を添付する
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/*.zip --repo "$REPO" --title "$TAG" --generate-notes
