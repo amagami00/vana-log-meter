@@ -119,4 +119,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/*.zip --repo "$REPO" --title "$TAG" --generate-notes
+        # タグを複数同時に push すると Release の作成順が前後するため、
+        # 最大のバージョンのタグだけを最新にする。
+        run: |
+          newest=$(gh api "repos/$REPO/tags" --paginate --jq '.[].name' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          latest=false
+          [ "$TAG" = "$newest" ] && latest=true
+          gh release create "$TAG" dist/*.zip --repo "$REPO" --title "$TAG" --generate-notes --latest="$latest"
