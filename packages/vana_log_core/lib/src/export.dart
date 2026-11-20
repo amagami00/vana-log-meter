@@ -4,6 +4,7 @@ import 'combat.dart';
 import 'masker.dart';
 import 'roster.dart';
 import 'session.dart';
+import 'window_merger.dart';
 
 /// 出力する列。名前と意味は battlelog の CSV に合わせ、
 /// ネイティブログから取れる列だけを出す。末尾の `log_*` などはこのアプリ独自の列。
@@ -130,7 +131,8 @@ String _csvCell(Object? v) {
 
 /// 監視中に取り出した事実を、読み込みのたびに CSV ファイルへ追記する。
 ///
-/// ファイルは最初に書く行が来たときに作る（`vana-log-YYYYMMDD-HHMMSS-w<ウィンドウ>.csv`）。
+/// ファイルは最初に書く行が来たときに作る（`vana-log-YYYYMMDD-HHMMSS-w<ウィンドウ>.csv`。
+/// 1 と 2 をまとめて読むときは `w12`）。
 /// 書けなかった行（Excel で開いていてロックされているなど）は手元に残し、次の [add] で書き直す。
 /// [masker] を渡すと、名前を置き換えてから書く。番号は初めて見た順に付け、書いた後は変えない。
 class CsvRecorder {
@@ -145,7 +147,7 @@ class CsvRecorder {
   final String stamp;
 
   late final File file = File(
-    '${directory.path}${Platform.pathSeparator}vana-log-$stamp-w${session.window}.csv',
+    '${directory.path}${Platform.pathSeparator}vana-log-$stamp-w${session.window == bothWindows ? '12' : session.window}.csv',
   );
 
   final List<Map<String, Object?>> _pending = [];

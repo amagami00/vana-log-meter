@@ -130,7 +130,9 @@ class _HomePageState extends State<HomePage> {
       for (final e in entries)
         if (e is File) parseLogFileName(e.uri.pathSegments.last)?.window,
     };
-    if (windows.contains(_s.window)) return null;
+    if (windows.contains(_s.window) || (_s.window == bothWindows && windows.isNotEmpty)) {
+      return null;
+    }
     if (windows.isNotEmpty) {
       return (message: 'ウィンドウ ${_s.window} のログ（${_s.window}_*.log）がありません', missing: false);
     }
@@ -247,6 +249,7 @@ class _HomePageState extends State<HomePage> {
                     children: [
                       SegmentedButton<int>(
                         segments: const [
+                          ButtonSegment(value: bothWindows, label: Text('ウィンドウ 1+2')),
                           ButtonSegment(value: 1, label: Text('ウィンドウ 1')),
                           ButtonSegment(value: 2, label: Text('ウィンドウ 2')),
                         ],

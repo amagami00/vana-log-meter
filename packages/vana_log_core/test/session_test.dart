@@ -113,4 +113,60 @@ void main() {
     expect(s.combatLines.map((x) => x.line.lineNo), [1, 3]);
     expect(s.combatLines.first.observedAt, isNull);
   });
+
+  group('ウィンドウ 1 と 2 をまとめて読む', () {
+    late LogSession m;
+    setUp(() => m = LogSession(directory: dir, window: bothWindows, clock: () => now));
+
+    test('両方に出た同じメッセージは 1 回だけ数える（行番号はウィンドウごとに違う）', () {
+      write('1_0.log', [
+        l(101, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1),
+        l(102, 'Aliceは、Fooを実行。', msg: 2),
+        l(103, '→Goblinに、500ダメージ。', msg: 2),
+      ]);
+      write('2_0.log', [
+        l(51, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1),
+        l(52, 'Aliceは、Fooを実行。', msg: 2),
+        l(53, '→Goblinに、500ダメージ。', msg: 2),
+      ]);
+      expect(m.poll().map((e) => e.damage), [10, 500]);
+      expect(m.combatLines.map((x) => x.line.window), [1, 1, 1]);
+    });
+
+    test('片方にしか出ないメッセージも、メッセージの番号の順に並べて数える', () {
+      write('1_0.log', [
+        l(1, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1),
+        l(2, 'Aliceの攻撃→Goblinに、30ダメージ。', msg: 3),
+      ]);
+      write('2_0.log', [l(1, 'Bobの攻撃→Goblinに、20ダメージ。', msg: 2)]);
+      expect(m.poll().map((e) => e.damage), [10, 20, 30]);
+    });
+
+    test('同じメッセージ内で同じ本文が続いても、それぞれ数える', () {
+      final lines = [
+        l(1, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1),
+        l(2, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1),
+      ];
+      write('1_0.log', lines);
+      write('2_0.log', lines);
+      expect(m.poll(), hasLength(2));
+    });
+
+    test('後から書き出されたウィンドウからは、まだ数えていない行だけを足す', () {
+      write('1_0.log', [l(1, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1)]);
+      expect(m.poll(), hasLength(1));
+      write('2_0.log', [
+        l(1, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1),
+        l(2, 'Bobの攻撃→Goblinに、20ダメージ。', msg: 2),
+      ]);
+      expect(m.poll().map((e) => e.actor), ['Bob']);
+      expect(m.eventCount, 2);
+    });
+
+    test('CSV のファイル名は w12', () {
+      final out = Directory('${dir.path}/out')..createSync();
+      final r = CsvRecorder(directory: out, session: m, now: DateTime(2026, 11, 20, 9));
+      expect(r.file.path, endsWith('vana-log-20261120-090000-w12.csv'));
+    });
+  });
 }
