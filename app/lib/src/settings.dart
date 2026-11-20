@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vana_log_core/vana_log_core.dart' show bothWindows;
 
 /// 画面の設定。端末内（shared_preferences）にだけ保存する。
 class Settings {
@@ -16,7 +17,8 @@ class Settings {
   String? get outputDir => _prefs.getString('outputDir');
   set outputDir(String? v) => _set('outputDir', v);
 
-  int get window => _prefs.getInt('window') ?? 1;
+  /// 読むウィンドウ（1 / 2）。[bothWindows]（既定）なら両方をまとめて読む。
+  int get window => _prefs.getInt('window') ?? bothWindows;
   set window(int v) => _prefs.setInt('window', v);
 
   /// 開始したとき、フォルダに残っている過去のログも集計に入れる。

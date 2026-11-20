@@ -6,8 +6,10 @@ import 'log_file.dart';
 import 'log_store.dart';
 import 'roster.dart';
 import 'summary.dart';
+import 'window_merger.dart';
 
 /// 1 つのログディレクトリ・1 つのウィンドウを読み続け、戦闘の事実を集計する。
+/// [window] に [bothWindows] を渡すと、ウィンドウ 1 と 2 を重複なくまとめて読む。
 ///
 /// 事実そのものは保持しない（[poll] の戻り値で受け取り、必要ならファイルに書く）。
 /// 保持するのは集計値・名前・直近の戦闘の行 [maxCombatLines] 行・ログファイル 20 個分の行だけで、
@@ -28,6 +30,8 @@ class LogSession {
   final DateTime startedAt;
 
   final Directory directory;
+
+  /// 読むウィンドウ（1 / 2）。[bothWindows] なら両方。
   final int window;
 
   /// 開始前から残っていた行（1 回目の [poll] で読む行）を集計に入れない。
@@ -39,6 +43,7 @@ class LogSession {
   final CombatParser parser = CombatParser();
   final Roster roster = Roster();
   final SummaryAccumulator summary = SummaryAccumulator();
+  final WindowMerger _merger = WindowMerger();
 
   /// 事実に出てきた名前（行動者・対象）。初めて見た順。名前の置き換えに使う。
   final Set<String> names = {};
@@ -67,7 +72,10 @@ class LogSession {
     final observedAt = first ? null : _clock();
     if (!directory.existsSync()) return const [];
     // ingestDirectory はウィンドウ→行番号の順に並べて返す。ファイルをまたいでも順序が保たれる。
-    final lines = store.ingestDirectory(directory).where((l) => l.window == window).toList();
+    final all = store.ingestDirectory(directory);
+    final lines = window == bothWindows
+        ? _merger.merge(all)
+        : all.where((l) => l.window == window).toList();
     if (first && skipExisting) {
       for (final line in lines) {
         roster.addAll(parser.add(line));

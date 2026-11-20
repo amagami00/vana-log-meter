@@ -9,7 +9,7 @@ dart run bin/vana_log.dart -i <TEMP のディレクトリ> -o <出力先> [-w 1|
 ```
 
 - 読解率（戦闘の行のうち読めた割合）を表示する。`--show-unparsed` で読めなかった行も出す。
-- 出力は `vana-log-YYYYMMDD-HHMMSS.csv`（`CsvRecorder` は `vana-log-YYYYMMDD-HHMMSS-w<ウィンドウ>.csv`）。CSV は UTF-8（BOM 付き）・CRLF。
+- 出力は `vana-log-YYYYMMDD-HHMMSS.csv`（`CsvRecorder` は `vana-log-YYYYMMDD-HHMMSS-w<ウィンドウ>.csv`、両方なら `w12`）。CSV は UTF-8（BOM 付き）・CRLF。
 - 列名は battlelog の CSV に合わせ、ネイティブログから取れる列だけを出す。
 - `RecordedLog.addCsv` で記録した CSV を読み戻し、監視中と同じ形で集計する（CSV の読み取りは `package:csv`）。
 
@@ -23,7 +23,9 @@ dart run bin/vana_log.dart -i <TEMP のディレクトリ> -o <出力先> [-w 1|
 
 - 追加ダメージと技連携の行為者は、直前の攻撃から推定する（`actor_inferred` = 1）。
 - 遠隔攻撃のサンプルがなく、未対応。
-- ウィンドウ 1 と 2 はほぼ同じ内容。どちらか一方を集計する。
+- ウィンドウ 1 と 2 は、出す種類の設定しだいで同じ内容にも別の内容にもなる。
+  メッセージの番号（4 番目のフィールド）は両ウィンドウで共通の通し番号で、同じメッセージは同じ番号・同じ本文になる。
+  `LogSession(window: bothWindows)` はこれを使い、両方を重複なく番号順にまとめて集計する（`WindowMerger`）。
 - 一括読み込みでは `time` / `elapsed` が空になる（監視中に観測した時刻だけを入れる）。
 - 同名の敵を区別できない。
 

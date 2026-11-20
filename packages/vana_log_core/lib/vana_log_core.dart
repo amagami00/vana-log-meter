@@ -12,3 +12,4 @@ export 'src/recorded_log.dart';
 export 'src/roster.dart';
 export 'src/session.dart';
 export 'src/summary.dart';
+export 'src/window_merger.dart';

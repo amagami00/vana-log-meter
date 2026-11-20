@@ -210,6 +210,36 @@ void main() {
     monitor.dispose();
   });
 
+  testWidgets('既定の 1+2 は両方のウィンドウを重複なく集計し、w12 の CSV に書く', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('vana_log_both_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    // メッセージ 1 は両方に、2 はウィンドウ 2 だけに出る。行番号はウィンドウごとに違う。
+    File('${dir.path}/1_0.log').writeAsBytesSync(
+      logFile([lineBytes((mode: 0x14, msg: 1, line: 10, body: sjis('Aliceの攻撃→Goblinに、120ダメージ。')))]),
+    );
+    File('${dir.path}/2_0.log').writeAsBytesSync(
+      logFile([
+        lineBytes((mode: 0x14, msg: 1, line: 5, body: sjis('Aliceの攻撃→Goblinに、120ダメージ。'))),
+        lineBytes((mode: 0x14, msg: 2, line: 6, body: sjis('Aliceの攻撃→Goblinに、30ダメージ。'))),
+      ]),
+    );
+    SharedPreferences.setMockInitialValues({});
+    final settings = await Settings.load();
+    settings
+      ..inputDir = dir.path
+      ..outputDir = '${dir.path}/out';
+    final monitor = LogMonitor();
+    await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
+    await tester.tap(find.text('開始'));
+    await tester.pump();
+    expect(monitor.window, bothWindows);
+    expect(monitor.session!.summary.summaries().single.damage, 150);
+    expect(monitor.recorder!.written, 2);
+    expect(monitor.recorder!.file.path, endsWith('-w12.csv'));
+    monitor.stop();
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   testWidgets('ウィンドウを切り替えても読んだ行を CSV に書き直さない', (tester) async {
     final dir = Directory.systemTemp.createTempSync('vana_log_window_');
     addTearDown(() => dir.deleteSync(recursive: true));
@@ -223,7 +253,8 @@ void main() {
     final settings = await Settings.load();
     settings
       ..inputDir = dir.path
-      ..outputDir = '${dir.path}/out';
+      ..outputDir = '${dir.path}/out'
+      ..window = 1;
     final monitor = LogMonitor();
     await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
     await tester.tap(find.text('開始'));
