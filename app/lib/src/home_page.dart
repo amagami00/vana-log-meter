@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vana_log_core/vana_log_core.dart';
 
+import 'actor_detail.dart';
 import 'jobs_dialog.dart';
 import 'monitor.dart';
 import 'multi_select.dart';
@@ -44,6 +45,9 @@ class _HomePageState extends State<HomePage> {
   /// 集計を絞り込む敵と味方。空ならすべて。
   Set<String> _enemies = {};
   Set<String> _people = {};
+
+  /// 詳細を開いている味方（実名）。null なら閉じている。
+  String? _selected;
 
   /// 開いた CSV の集計。null なら監視の集計を出す。
   RecordedLog? _loaded;
@@ -215,6 +219,9 @@ class _HomePageState extends State<HomePage> {
               if (chosenPeople.contains(s.name)) s,
           ];
     final display = masker?.display ?? (String n) => n;
+    // 絞り込みで表から消えた人の詳細は閉じる。
+    final selected = summaries.where((s) => s.name == _selected).firstOrNull;
+    final total = summaries.fold<int>(0, (a, s) => a + s.damage);
     final folderProblem = _folderProblem();
     final emptyMessage = _loaded != null
         ? 'この CSV に集計できる戦闘はありません'
@@ -433,7 +440,35 @@ class _HomePageState extends State<HomePage> {
                       Expanded(
                         child: summaries.isEmpty
                             ? Center(child: Text(emptyMessage))
-                            : _SummaryTable(summaries: summaries, display: display),
+                            : Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(
+                                    child: _SummaryTable(
+                                      summaries: summaries,
+                                      display: display,
+                                      selected: selected?.name,
+                                      onSelect: (n) =>
+                                          setState(() => _selected = n == _selected ? null : n),
+                                    ),
+                                  ),
+                                  if (selected != null) ...[
+                                    const VerticalDivider(width: 1),
+                                    SizedBox(
+                                      width: 340,
+                                      child: ActorDetailPanel(
+                                        summary: selected,
+                                        name: display(selected.name),
+                                        total: total,
+                                        time: view!.summary.timeOf(
+                                          enemies: chosenEnemies.isEmpty ? null : chosenEnemies,
+                                        ),
+                                        onClose: () => setState(() => _selected = null),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                       ),
                     ],
                   ),
@@ -499,22 +534,24 @@ class _DirRow extends StatelessWidget {
 }
 
 class _SummaryTable extends StatelessWidget {
-  const _SummaryTable({required this.summaries, required this.display});
+  const _SummaryTable({
+    required this.summaries,
+    required this.display,
+    required this.selected,
+    required this.onSelect,
+  });
 
   final List<ActorSummary> summaries;
   final String Function(String) display;
 
-  static String _n(int v) {
-    final s = v.toString();
-    final b = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
-      b.write(s[i]);
-    }
-    return b.toString();
-  }
+  /// 詳細を開いている人（実名）。
+  final String? selected;
 
-  static String _pct(double? v) => v == null ? '–' : '${(v * 100).toStringAsFixed(1)}%';
+  /// 行を押したとき（実名を渡す）。
+  final ValueChanged<String> onSelect;
+
+  static String _n(int v) => formatInt(v);
+  static String _pct(double? v) => formatPct(v);
 
   @override
   Widget build(BuildContext context) {
@@ -525,8 +562,11 @@ class _SummaryTable extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: DataTable(
           columnSpacing: 20,
+          showCheckboxColumn: false,
           columns: const [
-            DataColumn(label: Text('名前')),
+            DataColumn(
+              label: Tooltip(message: '行を押すと、その人の詳細を右に出す', child: Text('名前')),
+            ),
             DataColumn(label: Text('与ダメージ'), numeric: true),
             DataColumn(label: Text('割合'), numeric: true),
             DataColumn(
@@ -555,6 +595,8 @@ class _SummaryTable extends StatelessWidget {
           rows: [
             for (final s in summaries)
               DataRow(
+                selected: s.name == selected,
+                onSelectChanged: (_) => onSelect(s.name),
                 cells: [
                   DataCell(Text(display(s.name))),
                   num(_n(s.damage)),

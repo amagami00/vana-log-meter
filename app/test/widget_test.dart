@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show Scrollable;
 import 'package:material_ui/material_ui.dart' show CheckboxMenuButton, OutlinedButton, TextField;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -57,6 +58,52 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Aliceの攻撃→Goblinに、120ダメージ。'), findsOneWidget);
     expect(find.text('--:--:--'), findsOneWidget);
+    monitor.stop();
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('集計表の行を押すとその人の詳細を出し、もう一度押すと閉じる', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('vana_log_detail_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    var n = 0;
+    List<int> l(String text, int mode, [int? msg]) =>
+        lineBytes((mode: mode, msg: msg ?? ++n, line: ++n, body: sjis(text)));
+    File('${dir.path}/1_0.log').writeAsBytesSync(
+      logFile([
+        l('Aliceの攻撃→Goblinに、100ダメージ。', 0x14),
+        l('Aliceの攻撃→Goblinに、ミス。', 0x14),
+        l('Aliceは、Fooの構え。', 0x14),
+        l('Aliceは、Fooを実行。', 0x14, 50),
+        l('→Goblinに、1000ダメージ。', 0x14, 50),
+      ]),
+    );
+    SharedPreferences.setMockInitialValues({});
+    final settings = await Settings.load();
+    settings.inputDir = dir.path;
+    final monitor = LogMonitor();
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
+    await tester.tap(find.text('開始'));
+    await tester.pump();
+    expect(find.text('与ダメージの内訳'), findsNothing);
+
+    await tester.tap(find.text('Alice'));
+    await tester.pump();
+    expect(find.text('与ダメージの内訳'), findsOneWidget);
+    expect(find.text('1 / 1'), findsOneWidget); // 通常攻撃の命中 / ミス
+    expect(find.text('1,000（90.9%）'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Foo'),
+      100,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Foo'), findsOneWidget);
+
+    await tester.tap(find.text('Alice').first);
+    await tester.pump();
+    expect(find.text('与ダメージの内訳'), findsNothing);
     monitor.stop();
     await tester.pump(const Duration(seconds: 1));
   });

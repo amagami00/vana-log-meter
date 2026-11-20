@@ -23,7 +23,8 @@ class Roster {
       if (e.actor.isEmpty) continue;
       final mode = e.line.mode;
       final offensive = e.damage != null || e.isMiss;
-      if (e.actionType == 'melee' && _allyMeleeModes.contains(mode) && !e.actorInferred) {
+      final attack = e.actionType == 'melee' || e.actionType == 'ranged';
+      if (attack && _allyMeleeModes.contains(mode) && !e.actorInferred) {
         allies.add(e.actor);
         if (_selfModes.contains(mode)) self.add(e.actor);
         enemies.add(e.target);
