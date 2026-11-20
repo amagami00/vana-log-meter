@@ -37,10 +37,10 @@ class CombatEvent {
   final String actor;
   final String target;
 
-  /// `melee` / `ws` / `ja` / `spell` / `tp_move` / `defeat`。
+  /// `melee` / `ranged` / `ws` / `ja` / `spell` / `tp_move` / `defeat`。
   final String actionType;
 
-  /// `melee` / `crit` / `miss` / `ws` / `ja` / `spell` / `mb` / `add` / `sc` /
+  /// `melee` / `crit` / `miss` / `ranged` / `ws` / `ja` / `spell` / `mb` / `add` / `sc` /
   /// `counter` / `heal` / `defeat`。
   final String stat;
 
@@ -93,6 +93,9 @@ class _Context {
 final _meleeHit = RegExp(r'^(.+?)の攻撃→(.+)に、(\d+)ダメージ。$');
 final _meleeMiss = RegExp(r'^(.+?)の攻撃→(.+)に、ミス。$');
 final _meleeCrit = RegExp(r'^(.+?)の攻撃。クリティカル！$');
+// 遠隔攻撃はサンプルに無く、本文の形は未確認（通常攻撃と同じ形と仮定している）。
+final _rangedHit = RegExp(r'^(.+?)の遠隔攻撃→(.+)に、(\d+)ダメージ。$');
+final _rangedMiss = RegExp(r'^(.+?)の遠隔攻撃→(.+)に、ミス。$');
 final _counter = RegExp(r'^(.+?)の反撃効果→(.+)に、(\d+)ダメージ。$');
 final _execute = RegExp(r'^(.+?)は、(.+)を実行。$');
 final _spellFire = RegExp(r'^(.+?)の(.+)が発動。$');
@@ -163,6 +166,14 @@ class CombatParser {
     if ((m = _meleeCrit.firstMatch(t)) != null) {
       _newContext(line, m!.group(1)!, 'melee', 'crit', crit: true);
       return (LineCategory.context, const []);
+    }
+    if ((m = _rangedHit.firstMatch(t)) != null) {
+      final ctx = _newContext(line, m!.group(1)!, 'ranged', 'ranged');
+      return _hit(line, ctx, m.group(2)!, int.parse(m.group(3)!));
+    }
+    if ((m = _rangedMiss.firstMatch(t)) != null) {
+      final ctx = _newContext(line, m!.group(1)!, 'ranged', 'ranged');
+      return _miss(line, ctx, m.group(2)!);
     }
     if ((m = _counter.firstMatch(t)) != null) {
       final ctx = _newContext(line, m!.group(1)!, 'melee', 'counter');

@@ -44,6 +44,42 @@ void main() {
     expect(s.last.heal, 300);
   });
 
+  test('遠隔・WS のミスと WS 別の集計。敵で絞っても同じ値になる', () {
+    final ev = feed([
+      ('Aliceの攻撃→Goblinに、100ダメージ。', 0x14, 1),
+      ('Aliceの攻撃→Goblinに、140ダメージ。', 0x14, 2),
+      ('Aliceの遠隔攻撃→Goblinに、250ダメージ。', 0x14, 3),
+      ('Aliceの遠隔攻撃→Goblinに、ミス。', 0x14, 4),
+      ('Aliceは、Fooの構え。', 0x14, 5),
+      ('Aliceは、Fooを実行。', 0x14, 6),
+      ('→Goblinに、1000ダメージ。', 0x14, 6),
+      ('Aliceは、Fooの構え。', 0x14, 7),
+      ('Aliceは、Fooを実行。', 0x14, 8),
+      ('→Goblinに、ミス。', 0x14, 8),
+      ('Aliceは、Barの構え。', 0x14, 9),
+      ('Aliceは、Barを実行。', 0x14, 10),
+      ('→Goblinに、2000ダメージ。', 0x14, 10),
+    ]);
+    final a = SummaryAccumulator()..add(ev, Roster()..addAll(ev));
+    for (final x in [
+      a.summaries().single,
+      a.summaries(enemies: ['Goblin']).single,
+    ]) {
+      expect(x.meleeMax, 140);
+      expect(x.meleeAverage, 120);
+      expect((x.rangedHits, x.rangedMisses, x.rangedDamage, x.rangedMax), (1, 1, 250, 250));
+      expect(x.rangedAccuracy, 0.5);
+      expect(x.accuracy, 1);
+      expect((x.wsCount, x.wsMisses, x.wsDamage), (2, 1, 3000));
+      expect(x.wsAccuracy, closeTo(2 / 3, 1e-9));
+      final foo = x.wsByName['Foo']!;
+      expect((foo.count, foo.misses, foo.damage, foo.max), (1, 1, 1000, 1000));
+      expect(foo.accuracy, 0.5);
+      expect(x.wsByName['Bar']!.average, 2000);
+      expect(x.otherDamage, 0);
+    }
+  });
+
   test('敵で絞り込む', () {
     final ev = feed([
       ('Aliceの攻撃→Goblinに、100ダメージ。', 0x14, 1),

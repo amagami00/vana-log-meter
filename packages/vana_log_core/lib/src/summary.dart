@@ -1,6 +1,29 @@
 import 'combat.dart';
 import 'roster.dart';
 
+/// WS 1 種類分の集計。
+class WsSummary {
+  WsSummary(this.name);
+
+  final String name;
+
+  /// 命中した回数（最初の対象に当たった回数）。
+  int count = 0;
+  int misses = 0;
+  int damage = 0;
+  int max = 0;
+
+  double? get average => count == 0 ? null : damage / count;
+  double? get accuracy => count + misses == 0 ? null : count / (count + misses);
+
+  void _addFrom(WsSummary o) {
+    count += o.count;
+    misses += o.misses;
+    damage += o.damage;
+    if (o.max > max) max = o.max;
+  }
+}
+
 /// 味方 1 人分の集計（与ダメージは味方→敵の行動だけ、回復は敵でない行動者の分を数える）。
 class ActorSummary {
   ActorSummary(this.name);
@@ -12,10 +35,24 @@ class ActorSummary {
   int meleeMisses = 0;
   int meleeCrits = 0;
   int meleeDamage = 0;
+  int meleeMax = 0;
 
+  int rangedHits = 0;
+  int rangedMisses = 0;
+  int rangedCrits = 0;
+  int rangedDamage = 0;
+  int rangedMax = 0;
+
+  /// 命中した WS の回数（最初の対象に当たった回数）。
   int wsCount = 0;
+
+  /// 最初の対象に外れた WS の回数。
+  int wsMisses = 0;
   int wsDamage = 0;
   int wsMax = 0;
+
+  /// WS の種類ごとの集計（キーは WS の名前）。
+  final Map<String, WsSummary> wsByName = {};
 
   /// 精霊魔法などのダメージ（マジックバーストを除く）。
   int spellDamage = 0;
@@ -40,11 +77,40 @@ class ActorSummary {
 
   double? get wsAverage => wsCount == 0 ? null : wsDamage / wsCount;
 
+  /// WS の命中率（最初の対象に当たった割合、0〜1）。
+  double? get wsAccuracy => wsCount + wsMisses == 0 ? null : wsCount / (wsCount + wsMisses);
+
+  double? get meleeAverage => meleeHits == 0 ? null : meleeDamage / meleeHits;
+
+  double? get rangedAccuracy {
+    final n = rangedHits + rangedMisses;
+    return n == 0 ? null : rangedHits / n;
+  }
+
+  double? get rangedCritRate => rangedHits == 0 ? null : rangedCrits / rangedHits;
+  double? get rangedAverage => rangedHits == 0 ? null : rangedDamage / rangedHits;
+
+  /// 内訳に分けられない与ダメージ（構えを読めなかった WS・ダメージを与えるアビリティなど）。
+  int get otherDamage =>
+      damage -
+      meleeDamage -
+      rangedDamage -
+      wsDamage -
+      spellDamage -
+      mbDamage -
+      addDamage -
+      scDamage;
+
   /// 時刻の分かる事実（開始後に読んだ行）の与ダメージ。
   int timedDamage = 0;
 
   /// 戦闘時間 1 秒あたりの与ダメージ。時刻の分かる事実がなければ null。
   double? dps;
+
+  WsSummary _ws(String? name) {
+    final n = name ?? '';
+    return wsByName.putIfAbsent(n, () => WsSummary(n));
+  }
 
   void _addFrom(ActorSummary o) {
     damage += o.damage;
@@ -52,9 +118,19 @@ class ActorSummary {
     meleeMisses += o.meleeMisses;
     meleeCrits += o.meleeCrits;
     meleeDamage += o.meleeDamage;
+    if (o.meleeMax > meleeMax) meleeMax = o.meleeMax;
+    rangedHits += o.rangedHits;
+    rangedMisses += o.rangedMisses;
+    rangedCrits += o.rangedCrits;
+    rangedDamage += o.rangedDamage;
+    if (o.rangedMax > rangedMax) rangedMax = o.rangedMax;
     wsCount += o.wsCount;
+    wsMisses += o.wsMisses;
     wsDamage += o.wsDamage;
     if (o.wsMax > wsMax) wsMax = o.wsMax;
+    for (final w in o.wsByName.values) {
+      wsByName.putIfAbsent(w.name, () => WsSummary(w.name))._addFrom(w);
+    }
     spellDamage += o.spellDamage;
     mbCount += o.mbCount;
     mbDamage += o.mbDamage;
@@ -222,15 +298,31 @@ class _Scope {
       case 'melee' || 'crit' || 'counter':
         s.meleeHits++;
         s.meleeDamage += d;
+        if (d > s.meleeMax) s.meleeMax = d;
         if (e.isCrit) s.meleeCrits++;
       case 'miss' when e.actionType == 'melee':
         s.meleeMisses++;
+      case 'ranged':
+        s.rangedHits++;
+        s.rangedDamage += d;
+        if (d > s.rangedMax) s.rangedMax = d;
+        if (e.isCrit) s.rangedCrits++;
+      case 'miss' when e.actionType == 'ranged':
+        s.rangedMisses++;
+      case 'miss' when e.actionType == 'ws' && e.hitNo == 1:
+        s.wsMisses++;
+        s._ws(e.actionName).misses++;
       case 'ws' when e.hitNo == 1:
         s.wsCount++;
         s.wsDamage += d;
         if (d > s.wsMax) s.wsMax = d;
+        final w = s._ws(e.actionName);
+        w.count++;
+        w.damage += d;
+        if (d > w.max) w.max = d;
       case 'ws':
         s.wsDamage += d;
+        s._ws(e.actionName).damage += d;
       case 'spell':
         s.spellDamage += d;
       case 'mb':

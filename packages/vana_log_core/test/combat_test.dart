@@ -140,4 +140,26 @@ void main() {
     expect(r.isEnemy('Orc'), isTrue);
     expect(ev.map(r.sideOf), ['offense', 'defense', 'defense']);
   });
+
+  test('遠隔攻撃の命中とミス（本文の形は仮定）', () {
+    final e = run(CombatParser(), [
+      ('Aliceの遠隔攻撃→Goblinに、250ダメージ。', 0x14, 1),
+      ('Aliceの遠隔攻撃→Goblinに、ミス。', 0x14, 2),
+    ]);
+    expect(e.map((x) => (x.actionType, x.stat)), [('ranged', 'ranged'), ('ranged', 'miss')]);
+    expect(e.first.damage, 250);
+    expect(Roster()..addAll(e), isA<Roster>().having((r) => r.isAlly('Alice'), 'ally', isTrue));
+  });
+
+  test('WS のミスは実行行の文脈につなぐ', () {
+    final e = run(CombatParser(), [
+      ('Aliceは、Fooの構え。', 0x14, 1),
+      ('Aliceは、Fooを実行。', 0x14, 2),
+      ('→Goblinに、ミス。', 0x14, 2),
+    ]);
+    expect(e.single.actionType, 'ws');
+    expect(e.single.stat, 'miss');
+    expect(e.single.actionName, 'Foo');
+    expect(e.single.hitNo, 1);
+  });
 }
