@@ -98,6 +98,28 @@ void main() {
     expect(s.poll().map((e) => e.damage), [21]);
   });
 
+  test('前回の起動で書かれ、まだ上書きされていないファイルは読まない', () {
+    // 今回の起動は行 0 から 1_0.log に書いた。1_8.log は前日の起動の残り。
+    write('1_8.log', [l(400, 'Bobの攻撃→Orcに、99ダメージ。', msg: 300)]);
+    File('${dir.path}/1_8.log')
+        .setLastModifiedSync(DateTime.now().subtract(const Duration(days: 1)));
+    write('1_0.log', [l(0, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1)]);
+    expect(s.poll().map((e) => e.damage), [10]);
+    // 今回の起動が 1_8.log を上書きしたら読む。
+    write('1_8.log', [l(400, 'Aliceの攻撃→Goblinに、40ダメージ。', msg: 900)]);
+    expect(s.poll().map((e) => e.damage), [40]);
+  });
+
+  test('ウィンドウ 1+2 でも、前回の起動の残りは読まない', () {
+    final m = LogSession(directory: dir, window: bothWindows, clock: () => now);
+    write('2_7.log', [l(350, 'Bobの攻撃→Orcに、99ダメージ。', msg: 300)]);
+    File('${dir.path}/2_7.log')
+        .setLastModifiedSync(DateTime.now().subtract(const Duration(days: 1)));
+    write('1_0.log', [l(0, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1)]);
+    write('2_0.log', [l(0, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1)]);
+    expect(m.poll().map((e) => e.damage), [10]);
+  });
+
   test('ディレクトリがなくても例外を投げない', () {
     final gone = LogSession(directory: Directory('${dir.path}/none'));
     expect(gone.poll(), isEmpty);

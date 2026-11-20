@@ -72,15 +72,27 @@ class LogStore {
     return added;
   }
 
+  /// 最新のファイルよりこれ以上古いファイルは、前回の起動の残りかどうかを調べる。
+  static const staleAge = Duration(minutes: 1);
+
   /// ディレクトリ内のログファイルをすべて取り込み、初めて見た行を返す。
+  /// 並びはウィンドウ→行番号の順。
+  ///
+  /// ゲームは起動のたびに行番号を 0 から数え直し、前回の起動のファイルはまだ上書きして
+  /// いない番号の分だけ残る。そこでウィンドウごとに、更新時刻が最新のファイルの最大の
+  /// 行番号を今回の最新の行とし、それより大きい行番号を持つ古いファイル（最新より
+  /// [staleAge] 以上前）の行は返さない。返さなかった行も取り込み済みとして覚えるので、
+  /// 今回の起動がそのファイルを上書きすれば、新しい行として返す。
   List<LogLine> ingestDirectory(Directory dir) {
     final added = <LogLine>[];
+    final modified = <(int, int), DateTime>{};
     for (final entity in dir.listSync()) {
       if (entity is! File) continue;
       final id = parseLogFileName(entity.uri.pathSegments.last);
       if (id == null) continue;
       final Uint8List bytes;
       try {
+        modified[(id.window, id.fileIndex)] = entity.lastModifiedSync();
         bytes = entity.readAsBytesSync();
       } on FileSystemException {
         // ゲームが書き込み中でロックしている場合がある。次の読み直しで拾う。
@@ -88,11 +100,37 @@ class LogStore {
       }
       added.addAll(ingest(bytes, window: id.window, fileIndex: id.fileIndex));
     }
+    final stale = _staleFiles(modified);
+    added.removeWhere((l) => stale.contains((l.window, l.fileIndex)));
     added.sort((a, b) {
       final w = a.window.compareTo(b.window);
       return w != 0 ? w : a.lineNo.compareTo(b.lineNo);
     });
     return added;
+  }
+
+  /// 前回の起動の残りと判断したファイル（ウィンドウ, ファイル番号）。
+  Set<(int, int)> _staleFiles(Map<(int, int), DateTime> modified) {
+    int? maxLine((int, int) file) {
+      final lines = _files[file];
+      return lines == null || lines.isEmpty ? null : lines.reduce((a, b) => a > b ? a : b);
+    }
+
+    final stale = <(int, int)>{};
+    for (final window in {for (final f in modified.keys) f.$1}) {
+      final files = [
+        for (final f in modified.keys)
+          if (f.$1 == window && maxLine(f) != null) f,
+      ];
+      if (files.isEmpty) continue;
+      final newest = files.reduce((a, b) => modified[a]!.isAfter(modified[b]!) ? a : b);
+      final latestLine = maxLine(newest)!;
+      final cutoff = modified[newest]!.subtract(staleAge);
+      for (final f in files) {
+        if (modified[f]!.isBefore(cutoff) && maxLine(f)! > latestLine) stale.add(f);
+      }
+    }
+    return stale;
   }
 
   /// 指定ウィンドウの保持している行を行番号順に返す。
