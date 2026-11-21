@@ -164,8 +164,8 @@ class LogMonitor extends ChangeNotifier {
       for (final MapEntry(key: w, value: s) in _sessions.entries) {
         final added = s.poll();
         final lines = s.lastCombatLines;
-        any |= added.isNotEmpty;
         final fresh = added.isNotEmpty || lines.isNotEmpty;
+        any |= fresh;
         if (fresh && !_recorders.containsKey(w)) {
           final r = recorderFactory?.call(s);
           if (r != null) _recorders[w] = r;
