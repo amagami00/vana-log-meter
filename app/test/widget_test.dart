@@ -214,17 +214,69 @@ void main() {
     final monitor = LogMonitor()..recorderFactory = (s) => CsvRecorder(directory: out, session: s);
     monitor.start(dir.path, 1);
     final r = monitor.recorder!;
-    expect(r.pending, 1);
+    expect(r.pending, 2); // CSV 1 行 + 戦闘の行 1 行
     monitor.stop();
     expect(monitor.recorder, isNull);
-    expect(monitor.unsaved, 1);
+    expect(monitor.unsaved, 2);
     File(out.path).deleteSync();
     await tester.pump(const Duration(seconds: 1));
     expect(monitor.unsaved, 0);
     expect(r.written, 1);
+    expect(r.linesWritten, 1);
     expect(r.file.readAsStringSync(), contains('120'));
+    expect(r.linesFile.readAsStringSync(), contains('Alice'));
     monitor.dispose();
   });
+  testWidgets('事実にならない戦闘の行だけでも、戦闘の行は書く', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('vana_log_lines_only_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/1_0.log').writeAsBytesSync(
+      logFile([lineBytes((mode: 0x14, msg: 1, line: 1, body: sjis('Aliceは、Fooの構え。')))]),
+    );
+    final out = Directory('${dir.path}/out');
+    final monitor = LogMonitor()..recorderFactory = (s) => CsvRecorder(directory: out, session: s);
+    monitor.start(dir.path, 1);
+    final r = monitor.recorder!;
+    expect(r.written, 0);
+    expect(r.linesWritten, 1);
+    expect(r.file.existsSync(), isFalse);
+    expect(r.linesFile.readAsStringSync(), contains('Fooの構え'));
+    monitor.stop();
+    await tester.pump(const Duration(seconds: 1));
+    monitor.dispose();
+  });
+
+  testWidgets('片方のファイルだけ書けないときは、書けた方を書いて残りを保留する', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('vana_log_half_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/1_0.log').writeAsBytesSync(
+      logFile([lineBytes((mode: 0x14, msg: 1, line: 1, body: sjis('Aliceの攻撃→Goblinに、120ダメージ。')))]),
+    );
+    final out = Directory('${dir.path}/out')..createSync();
+    late CsvRecorder r;
+    final monitor = LogMonitor()
+      ..recorderFactory = (s) {
+        r = CsvRecorder(directory: out, session: s);
+        // 生ログの場所にフォルダがあり、書けない（開いたままの状態の代わり）。
+        Directory(r.linesFile.path).createSync();
+        return r;
+      };
+    monitor.start(dir.path, 1);
+    expect(r.written, 1);
+    expect(r.linesWritten, 0);
+    expect(r.pending, 1);
+    expect(r.error, isNotNull);
+    Directory(r.linesFile.path).deleteSync();
+    await tester.pump(const Duration(seconds: 1));
+    expect(r.pending, 0);
+    expect(r.error, isNull);
+    expect(r.linesWritten, 1);
+    expect(r.written, 1);
+    monitor
+      ..stop()
+      ..dispose();
+  });
+
   testWidgets('ログのフォルダが無い・ログが無いときは画面で知らせる', (tester) async {
     final dir = Directory.systemTemp.createTempSync('vana_log_folder_');
     addTearDown(() => dir.deleteSync(recursive: true));
@@ -331,7 +383,10 @@ void main() {
     expect(r1.written, 2);
     expect(r2.written, 1);
     expect(monitor.session!.summary.summaries().single.damage, 150);
-    expect(Directory('${dir.path}/out').listSync(), hasLength(2));
+    final outFiles = Directory('${dir.path}/out').listSync().map((f) => f.path);
+    expect(outFiles.where((p) => p.endsWith('.csv')), hasLength(2));
+    expect(outFiles.where((p) => p.endsWith('.lines.tsv')), hasLength(2));
+    expect(r1.linesWritten, 2);
     monitor.stop();
     await tester.pump(const Duration(seconds: 1));
   });
