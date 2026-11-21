@@ -28,6 +28,9 @@ class LogStore {
   int incomplete = 0;
   int malformed = 0;
 
+  /// [ingestDirectory] を 1 回でも呼んだか。
+  bool _ingested = false;
+
   /// 保持している行の数（全ウィンドウ）。
   int get size => _windows.values.fold(0, (a, m) => a + m.length);
 
@@ -83,7 +86,13 @@ class LogStore {
   /// 行番号を今回の最新の行とし、それより大きい行番号を持つ古いファイル（最新より
   /// [staleAge] 以上前）の行は返さない。返さなかった行も取り込み済みとして覚えるので、
   /// 今回の起動がそのファイルを上書きすれば、新しい行として返す。
+  ///
+  /// この判定は 1 回目の読み込みだけで行う。それ以降に増えた行は、いま動いているゲームが
+  /// 書いたものだからである。Windows では書き込み直後のファイルの更新時刻が前回の
+  /// 上書き時のまま見えることがあり、2 回目以降も判定すると、今回の行を捨ててしまう。
   List<LogLine> ingestDirectory(Directory dir) {
+    final first = !_ingested;
+    _ingested = true;
     final added = <LogLine>[];
     final modified = <(int, int), DateTime>{};
     for (final entity in dir.listSync()) {
@@ -100,8 +109,10 @@ class LogStore {
       }
       added.addAll(ingest(bytes, window: id.window, fileIndex: id.fileIndex));
     }
-    final stale = _staleFiles(modified);
-    added.removeWhere((l) => stale.contains((l.window, l.fileIndex)));
+    if (first) {
+      final stale = _staleFiles(modified);
+      added.removeWhere((l) => stale.contains((l.window, l.fileIndex)));
+    }
     added.sort((a, b) {
       final w = a.window.compareTo(b.window);
       return w != 0 ? w : a.lineNo.compareTo(b.lineNo);
