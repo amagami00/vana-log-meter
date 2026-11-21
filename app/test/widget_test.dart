@@ -214,15 +214,17 @@ void main() {
     final monitor = LogMonitor()..recorderFactory = (s) => CsvRecorder(directory: out, session: s);
     monitor.start(dir.path, 1);
     final r = monitor.recorder!;
-    expect(r.pending, 1);
+    expect(r.pending, 2); // CSV 1 行 + 戦闘の行 1 行
     monitor.stop();
     expect(monitor.recorder, isNull);
-    expect(monitor.unsaved, 1);
+    expect(monitor.unsaved, 2);
     File(out.path).deleteSync();
     await tester.pump(const Duration(seconds: 1));
     expect(monitor.unsaved, 0);
     expect(r.written, 1);
+    expect(r.linesWritten, 1);
     expect(r.file.readAsStringSync(), contains('120'));
+    expect(r.linesFile.readAsStringSync(), contains('Alice'));
     monitor.dispose();
   });
   testWidgets('ログのフォルダが無い・ログが無いときは画面で知らせる', (tester) async {
@@ -331,7 +333,10 @@ void main() {
     expect(r1.written, 2);
     expect(r2.written, 1);
     expect(monitor.session!.summary.summaries().single.damage, 150);
-    expect(Directory('${dir.path}/out').listSync(), hasLength(2));
+    final outFiles = Directory('${dir.path}/out').listSync().map((f) => f.path);
+    expect(outFiles.where((p) => p.endsWith('.csv')), hasLength(2));
+    expect(outFiles.where((p) => p.endsWith('.lines.tsv')), hasLength(2));
+    expect(r1.linesWritten, 2);
     monitor.stop();
     await tester.pump(const Duration(seconds: 1));
   });

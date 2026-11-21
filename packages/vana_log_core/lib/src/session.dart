@@ -55,6 +55,10 @@ class LogSession {
   /// [observedAt] は [CombatEvent.observedAt] と同じ。
   final ListQueue<({LogLine line, DateTime? observedAt})> combatLines = ListQueue();
 
+  /// 直前の [poll] で読んだ戦闘の行（行番号の順）。[combatLines] と違い、毎回入れ替える。
+  /// skipExisting の 1 回目は空。
+  List<({LogLine line, DateTime? observedAt})> lastCombatLines = const [];
+
   int _polls = 0;
 
   /// 最後に新しい行を読んだ時刻。
@@ -70,6 +74,7 @@ class LogSession {
   List<CombatEvent> poll() {
     final first = _polls++ == 0;
     final observedAt = first ? null : _clock();
+    lastCombatLines = const [];
     if (!directory.existsSync()) return const [];
     // ingestDirectory はウィンドウ→行番号の順に並べて返す。ファイルをまたいでも順序が保たれる。
     final all = store.ingestDirectory(directory);
@@ -83,13 +88,17 @@ class LogSession {
       return const [];
     }
     final added = <CombatEvent>[];
+    final combat = <({LogLine line, DateTime? observedAt})>[];
     for (final line in lines) {
       added.addAll(parser.add(line, observedAt: observedAt));
       if (parser.lastCategory != LineCategory.other) {
-        combatLines.add((line: line, observedAt: observedAt));
+        final entry = (line: line, observedAt: observedAt);
+        combat.add(entry);
+        combatLines.add(entry);
         if (combatLines.length > maxCombatLines) combatLines.removeFirst();
       }
     }
+    lastCombatLines = combat;
     if (added.isNotEmpty || lines.isNotEmpty) lastUpdated = _clock();
     // 名簿を先に更新してから集計する（同じ読み込みの中で敵味方が分かった分を反映する）。
     roster.addAll(added);

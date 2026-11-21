@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'combat.dart';
+import 'log_file.dart';
 import 'masker.dart';
 import 'roster.dart';
 import 'session.dart';
@@ -129,7 +130,40 @@ String _csvCell(Object? v) {
   return s;
 }
 
+/// 生ログの列。`time` は検知した時刻（開始前から残っていた行は空欄）、`f0`〜`f20` は
+/// ログの行の 16 進フィールドをそのまま（`f4` がメッセージの番号、`f5` が行番号）。
+final rawLogColumns = List<String>.unmodifiable([
+  'time',
+  'window',
+  for (var i = 0; i < 21; i++) 'f$i',
+  'text',
+]);
+
+/// 生ログの見出し行（BOM 付き、タブ区切り）。
+String rawLogHeader() => '\uFEFF${rawLogColumns.join('\t')}\r\n';
+
+/// 生ログのデータ行（タブ区切り、CRLF）。本文のタブと改行は空白に置き換える。
+String rawLogRows(List<({LogLine line, DateTime? observedAt})> lines) {
+  final sb = StringBuffer();
+  for (final (:line, :observedAt) in lines) {
+    sb
+      ..write(
+        [
+          observedAt == null ? '' : _formatTime(observedAt),
+          line.window,
+          ...line.fields,
+          line.text.replaceAll(RegExp(r'[\t\r\n]'), ' '),
+        ].join('\t'),
+      )
+      ..write('\r\n');
+  }
+  return sb.toString();
+}
+
 /// 監視中に取り出した事実を、読み込みのたびに CSV ファイルへ追記する。
+///
+/// 戦闘の行そのもの（1+2 をまとめて読むときは重複を除いた行）も、同じ名前の
+/// `.lines.tsv`（[rawLogColumns]）へ追記する。こちらは [masker] に関係なく名前を置き換えない。
 ///
 /// ファイルは最初に書く行が来たときに作る（`vana-log-YYYYMMDD-HHMMSS-w<ウィンドウ>.csv`。
 /// 1 と 2 をまとめて読むときは `w12`）。
@@ -146,24 +180,37 @@ class CsvRecorder {
   /// `session` 列の値とファイル名に使う日時。
   final String stamp;
 
-  late final File file = File(
-    '${directory.path}${Platform.pathSeparator}vana-log-$stamp-w${session.window == bothWindows ? '12' : session.window}.csv',
-  );
+  String get _base =>
+      '${directory.path}${Platform.pathSeparator}vana-log-$stamp-w${session.window == bothWindows ? '12' : session.window}';
+
+  late final File file = File('$_base.csv');
+
+  /// 戦闘の行そのものを書くファイル。
+  late final File linesFile = File('$_base.lines.tsv');
 
   final List<Map<String, Object?>> _pending = [];
+  final List<({LogLine line, DateTime? observedAt})> _pendingLines = [];
   bool _created = false;
+  bool _linesCreated = false;
 
-  /// 書いた行数。
+  /// CSV に書いた行数。
   int written = 0;
 
-  /// まだ書けていない行数。
-  int get pending => _pending.length;
+  /// 生ログに書いた行数。
+  int linesWritten = 0;
+
+  /// まだ書けていない行数（CSV と生ログの合計）。
+  int get pending => _pending.length + _pendingLines.length;
 
   /// 直近の書き込みの失敗。成功すると null に戻る。
   Object? error;
 
-  /// [events] を行にして追記する。前回書けなかった行も一緒に書く。
-  void add(List<CombatEvent> events) {
+  /// [events] を行にして CSV に、[lines] を生ログに追記する。前回書けなかった行も一緒に書く。
+  void add(
+    List<CombatEvent> events, {
+    List<({LogLine line, DateTime? observedAt})> lines = const [],
+  }) {
+    _pendingLines.addAll(lines);
     if (events.isNotEmpty) {
       var rows = toRows(
         events,
@@ -179,20 +226,37 @@ class CsvRecorder {
       }
       _pending.addAll(rows);
     }
-    if (_pending.isEmpty) return;
-    try {
-      if (!_created) {
-        directory.createSync(recursive: true);
-        file.writeAsStringSync(csvHeader(), flush: true);
-        _created = true;
+    if (_pending.isEmpty && _pendingLines.isEmpty) return;
+    Object? failed;
+    if (_pending.isNotEmpty) {
+      try {
+        if (!_created) {
+          directory.createSync(recursive: true);
+          file.writeAsStringSync(csvHeader(), flush: true);
+          _created = true;
+        }
+        file.writeAsStringSync(csvRows(_pending), mode: FileMode.append, flush: true);
+        written += _pending.length;
+        _pending.clear();
+      } on FileSystemException catch (e) {
+        failed = e;
       }
-      file.writeAsStringSync(csvRows(_pending), mode: FileMode.append, flush: true);
-      written += _pending.length;
-      _pending.clear();
-      error = null;
-    } on FileSystemException catch (e) {
-      error = e;
     }
+    if (_pendingLines.isNotEmpty) {
+      try {
+        if (!_linesCreated) {
+          directory.createSync(recursive: true);
+          linesFile.writeAsStringSync(rawLogHeader(), flush: true);
+          _linesCreated = true;
+        }
+        linesFile.writeAsStringSync(rawLogRows(_pendingLines), mode: FileMode.append, flush: true);
+        linesWritten += _pendingLines.length;
+        _pendingLines.clear();
+      } on FileSystemException catch (e) {
+        failed ??= e;
+      }
+    }
+    error = failed;
   }
 
   static String _stamp(DateTime t) =>

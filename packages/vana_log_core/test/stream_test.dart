@@ -107,6 +107,82 @@ void main() {
     expect(last, isNot(contains('Alice')));
   });
 
+  group('戦闘の行そのものを書く', () {
+    List<List<String>> rawRows(CsvRecorder r) => [
+      for (final x in r.linesFile.readAsStringSync().split('\r\n').skip(1))
+        if (x.isNotEmpty) x.split('\t'),
+    ];
+    final textAt = rawLogColumns.indexOf('text');
+
+    test('1+2 は重複を除いて戦闘の行だけを書き、名前を隠す設定でも名前のまま', () {
+      now = DateTime(2026, 11, 19, 12);
+      final s = LogSession(directory: dir, window: bothWindows, clock: () => now);
+      final r = CsvRecorder(directory: out, session: s, masker: NameMasker(), now: now);
+      List<int> m(int line, int msg, String text, {int mode = 0x14}) =>
+          lineBytes((mode: mode, msg: msg, line: line, body: sjis(text)));
+      File('${dir.path}/1_0.log').writeAsBytesSync(
+        logFile([m(1, 1, 'Aliceの攻撃→Goblinに、10ダメージ。'), m(2, 2, 'こんにちは', mode: 0x05)]),
+      );
+      File('${dir.path}/2_0.log').writeAsBytesSync(
+        logFile([m(7, 1, 'Aliceの攻撃→Goblinに、10ダメージ。'), m(8, 3, 'Bobの攻撃→Goblinに、20ダメージ。')]),
+      );
+      r.add(s.poll(), lines: s.lastCombatLines);
+      now = now.add(const Duration(seconds: 1));
+      r.add(s.poll(), lines: s.lastCombatLines); // 新しい行がなければ何も書かない
+      expect(r.linesFile.path, endsWith('vana-log-20261119-120000-w12.lines.tsv'));
+      expect(r.linesFile.readAsBytesSync().take(3), [0xEF, 0xBB, 0xBF]);
+      final rows = rawRows(r);
+      expect(rows.map((c) => c[textAt]), ['Aliceの攻撃→Goblinに、10ダメージ。', 'Bobの攻撃→Goblinに、20ダメージ。']);
+      expect(rows.map((c) => c.length).toSet(), {rawLogColumns.length});
+      expect(rows.map((c) => (c[1], c[rawLogColumns.indexOf('f4')])), [
+        ('1', '00000001'),
+        ('2', '00000003'),
+      ]);
+      expect(rows.first.first, isEmpty, reason: '開始前から残っていた行は時刻が空欄');
+      expect(r.linesWritten, 2);
+      expect(r.file.readAsStringSync(), isNot(contains('Alice')));
+    });
+
+    test('監視中に読んだ行は検知時刻を付けて追記する', () {
+      final s = LogSession(directory: dir, clock: () => now);
+      final r = CsvRecorder(directory: out, session: s, now: now);
+      write(0, [l(1, 'Aliceの攻撃→Goblinに、10ダメージ。')]);
+      r.add(s.poll(), lines: s.lastCombatLines);
+      write(0, [l(1, 'Aliceの攻撃→Goblinに、10ダメージ。'), l(2, 'Aliceの攻撃→Goblinに、11ダメージ。')]);
+      now = DateTime(2026, 11, 19, 12, 0, 5);
+      r.add(s.poll(), lines: s.lastCombatLines);
+      final rows = rawRows(r);
+      expect(rows, hasLength(2));
+      expect(rows.last.first, '2026-11-19 12:00:05');
+      expect(
+        r.linesFile.readAsStringSync().split('\r\n').where((x) => x.contains('\ttext')),
+        hasLength(1),
+      );
+    });
+
+    test('skipExisting の 1 回目は書かない', () {
+      final s = LogSession(directory: dir, skipExisting: true, clock: () => now);
+      write(0, [l(1, 'Aliceの攻撃→Goblinに、10ダメージ。')]);
+      s.poll();
+      expect(s.lastCombatLines, isEmpty);
+    });
+
+    test('書けなかった行は残し、次に書けたときにまとめて書く', () {
+      final s = LogSession(directory: dir, clock: () => now);
+      File(out.path).writeAsStringSync('x');
+      final r = CsvRecorder(directory: out, session: s, now: now);
+      write(0, [l(1, 'Aliceの攻撃→Goblinに、10ダメージ。')]);
+      r.add(s.poll(), lines: s.lastCombatLines);
+      expect(r.error, isNotNull);
+      expect(r.pending, 2); // CSV 1 行 + 生ログ 1 行
+      File(out.path).deleteSync();
+      r.add(const []);
+      expect(r.error, isNull);
+      expect(r.pending, 0);
+      expect(r.linesWritten, 1);
+    });
+  });
+
   test('長時間の記録でも保持する行は上限を超えない', () {
     final s = LogSession(directory: dir, clock: () => now);
     const files = 400; // 2 万行（ファイルの一巡 20 回分）

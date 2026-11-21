@@ -37,7 +37,7 @@ class LogMonitor extends ChangeNotifier {
   int get window => _window;
   bool get running => _timer != null;
 
-  /// 記録先の CSV を作る。記録しない設定なら null を返す。新しい事実が来るたびに、
+  /// 記録先の CSV を作る。記録しない設定なら null を返す。新しい事実か戦闘の行が来るたびに、
   /// 記録先がまだなければ呼ぶ。
   CsvRecorder? Function(LogSession session)? recorderFactory;
 
@@ -163,15 +163,17 @@ class LogMonitor extends ChangeNotifier {
       var any = false;
       for (final MapEntry(key: w, value: s) in _sessions.entries) {
         final added = s.poll();
+        final lines = s.lastCombatLines;
         any |= added.isNotEmpty;
-        if (added.isNotEmpty && !_recorders.containsKey(w)) {
+        final fresh = added.isNotEmpty || lines.isNotEmpty;
+        if (fresh && !_recorders.containsKey(w)) {
           final r = recorderFactory?.call(s);
           if (r != null) _recorders[w] = r;
         }
         final r = _recorders[w];
-        if (r != null && (added.isNotEmpty || r.pending > 0)) {
+        if (r != null && (fresh || r.pending > 0)) {
           final hadError = r.error != null;
-          r.add(added);
+          r.add(added, lines: lines);
           if (hadError != (r.error != null)) notifyListeners();
         }
       }
