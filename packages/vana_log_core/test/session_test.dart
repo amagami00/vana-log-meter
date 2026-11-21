@@ -120,6 +120,34 @@ void main() {
     expect(m.poll().map((e) => e.damage), [10]);
   });
 
+  // Windows では、書き込み直後のファイルの更新時刻が前回の上書き時のまま見えることがある。
+  void writeWithOldTime(String name, List<List<int>> lines) {
+    write(name, lines);
+    File('${dir.path}/$name')
+        .setLastModifiedSync(DateTime.now().subtract(const Duration(hours: 1)));
+  }
+
+  test('監視中に書かれたファイルは、更新時刻が古く見えても読む', () {
+    write('1_0.log', [l(0, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1)]);
+    expect(s.poll().map((e) => e.damage), [10]);
+    writeWithOldTime('1_1.log', [l(50, 'Aliceの攻撃→Goblinに、20ダメージ。', msg: 60)]);
+    expect(s.poll().map((e) => e.damage), [20]);
+  });
+
+  test('ウィンドウ 1+2 でも、監視中に書かれたファイルは更新時刻が古く見えても読む', () {
+    final m = LogSession(directory: dir, window: bothWindows, clock: () => now);
+    write('1_0.log', [l(0, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1)]);
+    write('2_0.log', [l(0, 'Aliceの攻撃→Goblinに、10ダメージ。', msg: 1)]);
+    expect(m.poll().map((e) => e.damage), [10]);
+    writeWithOldTime('1_1.log', [l(50, 'Aliceの攻撃→Goblinに、20ダメージ。', msg: 60)]);
+    expect(m.poll().map((e) => e.damage), [20]);
+    writeWithOldTime('2_1.log', [
+      l(50, 'Aliceの攻撃→Goblinに、20ダメージ。', msg: 60),
+      l(51, 'Aliceの攻撃→Goblinに、30ダメージ。', msg: 61),
+    ]);
+    expect(m.poll().map((e) => e.damage), [30]);
+  });
+
   test('ディレクトリがなくても例外を投げない', () {
     final gone = LogSession(directory: Directory('${dir.path}/none'));
     expect(gone.poll(), isEmpty);
