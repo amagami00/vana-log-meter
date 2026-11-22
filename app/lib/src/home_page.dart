@@ -160,12 +160,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// 新しい記録先の CSV。出力先が未選択か、記録しない設定なら null。
-  CsvRecorder? _newRecorder(LogSession session) {
+  CsvRecorder? _newRecorder(LogSession session, DateTime startedAt) {
     final out = _s.outputDir;
     if (!_s.exportCsv || out == null) return null;
     return CsvRecorder(
       directory: Directory(out),
       session: session,
+      now: startedAt,
       // 画面と同じ番号になるよう、それまでに見た名前を先に登録する。
       masker: _s.anonymize
           ? (NameMasker(jobs: _s.jobs)..learnNames(session.names, session.roster))
@@ -648,7 +649,7 @@ class _RecordStatus extends StatelessWidget {
       text = '書き込めません（${r.pending} 行を保留中。ファイルを開いていたら閉じてください）: ${r.error}';
       isError = true;
     } else {
-      final name = r.file.uri.pathSegments.last.replaceFirst(RegExp(r'-集計\.csv$'), '');
+      final name = r.file.uri.pathSegments.last;
       text = '記録中: $name（事実 ${r.written} 行・戦闘の行 ${r.linesWritten} 行）';
     }
     final unsaved = monitor.unsaved;

@@ -38,8 +38,12 @@ class LogMonitor extends ChangeNotifier {
   bool get running => _timer != null;
 
   /// 記録先の CSV を作る。記録しない設定なら null を返す。新しい事実か戦闘の行が来るたびに、
-  /// 記録先がまだなければ呼ぶ。
-  CsvRecorder? Function(LogSession session)? recorderFactory;
+  /// 記録先がまだなければ呼ぶ。[startedAt] はファイル名に使う日時で、区切りの中では
+  /// すべてのウィンドウで同じ値になる。
+  CsvRecorder? Function(LogSession session, DateTime startedAt)? recorderFactory;
+
+  /// いまの区切りを始めた日時（開始・停止・「ここから集計」・区切りの時刻）。
+  DateTime _startedAt = DateTime.now();
 
   /// 表示しているウィンドウのいま追記している CSV。まだ書く事実がないか、記録しない設定なら null。
   CsvRecorder? get recorder => _recorders[_window];
@@ -60,6 +64,7 @@ class LogMonitor extends ChangeNotifier {
   }
 
   void _close() {
+    _startedAt = DateTime.now();
     for (final r in _recorders.values) {
       if (r.pending > 0) r.add(const []);
       if (r.pending > 0) _draining.add(r);
@@ -167,7 +172,7 @@ class LogMonitor extends ChangeNotifier {
         final fresh = added.isNotEmpty || lines.isNotEmpty;
         any |= fresh;
         if (fresh && !_recorders.containsKey(w)) {
-          final r = recorderFactory?.call(s);
+          final r = recorderFactory?.call(s, _startedAt);
           if (r != null) _recorders[w] = r;
         }
         final r = _recorders[w];
