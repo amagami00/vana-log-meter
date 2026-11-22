@@ -93,6 +93,41 @@ void main() {
     expect(p.counts[LineCategory.unparsed], 2);
   });
 
+  test('敵の範囲攻撃は、対象ごとにモードやウィンドウが変わってもつなぐ', () {
+    final p = CombatParser();
+    // 対象が自分・パーティ・同盟で、モードが変わる。1+2 ではウィンドウもまたぐ。
+    final e = [
+      ...p.add(logLine('GoblinのBazが発動。', mode: 0xb9, msg: 20, line: 100)),
+      ...p.add(logLine('→Aliceに、10ダメージ。', mode: 0xb9, msg: 20, line: 101)),
+      ...p.add(logLine('→Bobに、11ダメージ。', mode: 0x20, msg: 21, window: 2, line: 50)),
+      ...p.add(logLine('→Carolに、12ダメージ。', mode: 0x28, msg: 22, window: 2, line: 51)),
+    ];
+    expect(e.map((x) => (x.actor, x.target, x.damage, x.actionName)), [
+      ('Goblin', 'Alice', 10, 'Baz'),
+      ('Goblin', 'Bob', 11, 'Baz'),
+      ('Goblin', 'Carol', 12, 'Baz'),
+    ]);
+    expect(p.counts[LineCategory.unparsed], 0);
+  });
+
+  test('味方の技の後の、向きの違う矢印の行はつながない（見出しの欠けた敵の範囲攻撃）', () {
+    final p = CombatParser();
+    final e = run(p, [
+      ('Aliceは、Fooを実行。', 0xa3, 30),
+      ('→Goblinに、500ダメージ。', 0xa3, 30),
+      ('→Bobに、40ダメージ。', 0xb9, 31),
+    ]);
+    expect(e.map((x) => (x.actor, x.target)), [('Alice', 'Goblin')]);
+    expect(p.counts[LineCategory.unparsed], 1);
+  });
+
+  test('見出しの行がない技のダメージ（クイックドローなど）', () {
+    final e = run(CombatParser(), [('AliceのFooショット→Goblinに、900ダメージ。', 0x19, 1)]);
+    expect(e.map((x) => (x.actor, x.target, x.damage, x.stat, x.actionName)), [
+      ('Alice', 'Goblin', 900, 'ja', 'Fooショット'),
+    ]);
+  });
+
   test('反撃・回復・撃破', () {
     final e = run(CombatParser(), [
       ('Aliceの反撃効果→Goblinに、40ダメージ。', 0x14, 1),
@@ -139,6 +174,21 @@ void main() {
     expect(r.isEnemy('Goblin'), isTrue);
     expect(r.isEnemy('Orc'), isTrue);
     expect(ev.map(r.sideOf), ['offense', 'defense', 'defense']);
+  });
+
+  test('Roster は、パーティの外（同盟など）の味方も、魔法だけで戦う人も味方にする', () {
+    final ev = run(CombatParser(), [
+      ('Aliceの攻撃→Goblinに、10ダメージ。', 0x14, 1),
+      ('Daveの攻撃→Goblinに、20ダメージ。', 0xa3, 2),
+      ('EveのBazが発動。', 0xa3, 3),
+      ('→マジックバースト！Orcに、900ダメージ。', 0xa3, 3),
+    ]);
+    final r = Roster()..addAll(ev);
+    expect(r.isAlly('Dave'), isTrue);
+    expect(r.isAlly('Eve'), isTrue);
+    expect(r.isEnemy('Orc'), isTrue);
+    expect(r.self, {'Alice'});
+    expect(ev.map(r.sideOf), ['offense', 'offense', 'offense']);
   });
 
   test('遠隔攻撃の命中とミス（本文の形は仮定）', () {

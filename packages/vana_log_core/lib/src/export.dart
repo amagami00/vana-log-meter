@@ -130,11 +130,15 @@ String _csvCell(Object? v) {
   return s;
 }
 
-/// 生ログの列。`time` は検知した時刻（開始前から残っていた行は空欄）、`f0`〜`f20` は
-/// ログの行の 16 進フィールドをそのまま（`f4` がメッセージの番号、`f5` が行番号）。
+/// 生ログの列。`time` は検知した時刻（開始前から残っていた行は空欄）。
+/// `log_window`・`log_line` は CSV の同名の列と同じ値で、この 2 列で CSV の行と突き合わせられる。
+/// `msg` はメッセージの番号（10 進）。`f0`〜`f20` はログの行の 16 進フィールドをそのまま
+/// （`f4` が `msg`、`f5` が `log_line` の 16 進）。
 final rawLogColumns = List<String>.unmodifiable([
   'time',
-  'window',
+  'log_window',
+  'log_line',
+  'msg',
   for (var i = 0; i < 21; i++) 'f$i',
   'text',
 ]);
@@ -151,6 +155,8 @@ String rawLogRows(List<({LogLine line, DateTime? observedAt})> lines) {
         [
           observedAt == null ? '' : _formatTime(observedAt),
           line.window,
+          line.lineNo,
+          line.messageId,
           ...line.fields,
           line.text.replaceAll(RegExp(r'[\t\r\n]'), ' '),
         ].join('\t'),

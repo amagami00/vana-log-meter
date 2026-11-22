@@ -103,6 +103,17 @@ final _castStart = RegExp(r'^(.+?)は、(.+?)に(.+)を唱えた。$');
 final _ready = RegExp(r'^(.+?)は、(.+)の構え。$');
 final _defeat = RegExp(r'^(.+?)は、(.+)を倒した。$');
 final _directHeal = RegExp(r'^(.+?)の(.+)→(.+)のHPが、(\d+)回復。$');
+/// 範囲攻撃の矢印の行のモードを、向きで分ける（実ログで観察した値）。
+/// 味方→敵、敵→味方（同盟を含む）、回復の 3 組。どれでもなければ null。
+String? _modeGroup(int mode) => switch (mode) {
+  0x14 || 0x15 || 0x19 || 0x1A || 0xA3 => 'offense',
+  0x1C || 0x1D || 0x20 || 0x28 || 0x2B || 0xB5 || 0xB9 => 'defense',
+  0x1F || 0x23 => 'heal',
+  _ => null,
+};
+
+// 見出しの行を持たない技（クイックドローなど）。通常攻撃・遠隔攻撃・反撃は先に判定する。
+final _directDamage = RegExp(r'^(.+?)の(.+)→(.+)に、(\d+)ダメージ。$');
 final _directOther = RegExp(r'^(.+?)の(.+)→(.+)の(MP|TP)が、(\d+)回復。$');
 final _arrowDamage = RegExp(r'^→(マジックバースト！)?(.+)に、(\d+)ダメージ。$');
 final _arrowMiss = RegExp(r'^→(.+)に、ミス。$');
@@ -124,8 +135,11 @@ class CombatParser {
   /// 対象ごとの直近の WS の行動者（技連携の行動者の推定に使う）。
   final Map<String, String> _lastWsActor = {};
 
-  /// 直前に [add] で渡した行（範囲攻撃の 2 体目以降を、直前の行の文脈につなぐのに使う）。
-  LogLine? _prevLine;
+  /// 直近の、複数の対象に当たりうる行動（魔法・技・WS など）の文脈と、その最後の
+  /// メッセージ番号。範囲攻撃の 2 体目以降をつなぐのに使う。
+  _Context? _chainCtx;
+  int _chainMsg = 0;
+  int _chainMode = 0;
 
   final Map<LineCategory, int> counts = {for (final c in LineCategory.values) c: 0};
 
@@ -140,7 +154,6 @@ class CombatParser {
   List<CombatEvent> add(LogLine line, {DateTime? observedAt}) {
     final (category, events) = _classify(line);
     lastCategory = category;
-    _prevLine = line;
     counts[category] = counts[category]! + 1;
     if (category == LineCategory.unparsed && unparsed.length < _unparsedKeep) {
       unparsed.add(line);
@@ -214,6 +227,10 @@ class CombatParser {
       final ctx = _newContext(line, m!.group(1)!, 'ja', 'heal', name: m.group(2));
       return _heal(line, ctx, m.group(3)!, int.parse(m.group(4)!));
     }
+    if ((m = _directDamage.firstMatch(t)) != null) {
+      final ctx = _newContext(line, m!.group(1)!, 'ja', 'ja', name: m.group(2));
+      return _hit(line, ctx, m.group(3)!, int.parse(m.group(4)!));
+    }
     if (_directOther.hasMatch(t)) {
       return (LineCategory.context, const []);
     }
@@ -231,6 +248,10 @@ class CombatParser {
           return (LineCategory.unparsed, const []);
         }
         return (_combatHint.hasMatch(t) ? LineCategory.context : LineCategory.other, const []);
+      }
+      if (identical(ctx, _chainCtx)) {
+        _chainMsg = line.messageId;
+        _chainMode = line.mode;
       }
       if ((m = _arrowDamage.firstMatch(t)) != null) {
         final mb = m!.group(1) != null;
@@ -278,17 +299,17 @@ class CombatParser {
   }
 
   /// 範囲攻撃の 2 体目以降は、対象ごとにメッセージ番号が 1 つずつ増え、矢印の行だけが続く。
-  /// 直前の行と行番号・メッセージ番号が連続し、モードが同じなら、その文脈を引き継ぐ。
+  /// 直前の魔法・技の文脈のメッセージ番号の次で、モードが同じ向きの組（[_modeGroup]）なら
+  /// 引き継ぐ。対象ごとにモードが変わり、ウィンドウ 1+2 では行がウィンドウをまたぐので、
+  /// モードの一致と行番号の連続は求めない。通常攻撃・遠隔攻撃は 1 体にしか当たらないので
+  /// 引き継がない。見出しの行が欠けた敵の範囲攻撃を、直前の味方の技につながないよう、
+  /// 向きの違うモードには引き継がない。
   _Context? _continued(LogLine line) {
-    final prev = _prevLine;
-    if (prev == null ||
-        prev.lineNo + 1 != line.lineNo ||
-        prev.messageId + 1 != line.messageId ||
-        prev.mode != line.mode) {
-      return null;
-    }
-    final ctx = _contexts[prev.messageId];
-    if (ctx != null) _contexts[line.messageId] = ctx;
+    final ctx = _chainCtx;
+    if (ctx == null || line.messageId != _chainMsg + 1) return null;
+    final group = _modeGroup(line.mode);
+    if (group == null || group != _modeGroup(_chainMode)) return null;
+    _contexts[line.messageId] = ctx;
     return ctx;
   }
 
@@ -302,6 +323,10 @@ class CombatParser {
   }) {
     final ctx = _Context(actor, actionType, stat, name: name, crit: crit);
     _contexts[line.messageId] = ctx;
+    final single = actionType == 'melee' || actionType == 'ranged';
+    _chainCtx = single ? null : ctx;
+    _chainMsg = line.messageId;
+    _chainMode = line.mode;
     if (_contexts.length > 256) {
       _contexts.remove(_contexts.keys.first);
     }
