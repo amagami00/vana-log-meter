@@ -134,10 +134,15 @@ void main() {
       final rows = rawRows(r);
       expect(rows.map((c) => c[textAt]), ['Aliceの攻撃→Goblinに、10ダメージ。', 'Bobの攻撃→Goblinに、20ダメージ。']);
       expect(rows.map((c) => c.length).toSet(), {rawLogColumns.length});
-      expect(rows.map((c) => (c[1], c[rawLogColumns.indexOf('f4')])), [
-        ('1', '00000001'),
-        ('2', '00000003'),
+      int col(String name) => rawLogColumns.indexOf(name);
+      expect(rows.map((c) => (c[col('log_window')], c[col('log_line')], c[col('msg')])), [
+        ('1', '1', '1'),
+        ('2', '8', '3'),
       ]);
+      // CSV の log_window・log_line と同じ値で突き合わせられる。
+      final csv = r.file.readAsStringSync().split('\r\n').skip(1).where((x) => x.isNotEmpty);
+      final w = exportColumns.indexOf('log_window'), ln = exportColumns.indexOf('log_line');
+      expect(csv.map((x) => (x.split(',')[w], x.split(',')[ln])), [('1', '1'), ('2', '8')]);
       expect(rows.first.first, isEmpty, reason: '開始前から残っていた行は時刻が空欄');
       expect(r.linesWritten, 2);
       expect(r.file.readAsStringSync(), isNot(contains('Alice')));
