@@ -648,7 +648,7 @@ class _RecordStatus extends StatelessWidget {
       text = '書き込めません（${r.pending} 行を保留中。ファイルを開いていたら閉じてください）: ${r.error}';
       isError = true;
     } else {
-      final name = r.file.uri.pathSegments.last.replaceFirst(RegExp(r'\.csv$'), '');
+      final name = r.file.uri.pathSegments.last.replaceFirst(RegExp(r'-集計\.csv$'), '');
       text = '記録中: $name（事実 ${r.written} 行・戦闘の行 ${r.linesWritten} 行）';
     }
     final unsaved = monitor.unsaved;

@@ -76,8 +76,8 @@ Future<void> main(List<String> args) async {
   final out = Directory(outPath)..createSync(recursive: true);
   final rows = toRows(events, session: session);
   final base = '${out.path}${Platform.pathSeparator}vana-log-${_stamp(now)}';
-  File('$base.csv').writeAsStringSync(toCsv(rows));
-  stdout.writeln('書き出し: $base.csv');
+  File('$base-集計.csv').writeAsStringSync(toCsv(rows));
+  stdout.writeln('書き出し: $base-集計.csv');
 }
 
 String _two(int n) => n.toString().padLeft(2, '0');

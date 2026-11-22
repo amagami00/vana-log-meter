@@ -129,7 +129,7 @@ void main() {
       r.add(s.poll(), lines: s.lastCombatLines);
       now = now.add(const Duration(seconds: 1));
       r.add(s.poll(), lines: s.lastCombatLines); // 新しい行がなければ何も書かない
-      expect(r.linesFile.path, endsWith('vana-log-20261119-120000-w12.lines.tsv'));
+      expect(r.linesFile.path, endsWith('vana-log-20261119-120000-w12-生ログ.tsv'));
       expect(r.linesFile.readAsBytesSync().take(3), [0xEF, 0xBB, 0xBF]);
       final rows = rawRows(r);
       expect(rows.map((c) => c[textAt]), ['Aliceの攻撃→Goblinに、10ダメージ。', 'Bobの攻撃→Goblinに、20ダメージ。']);

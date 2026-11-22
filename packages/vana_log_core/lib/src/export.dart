@@ -168,10 +168,10 @@ String rawLogRows(List<({LogLine line, DateTime? observedAt})> lines) {
 
 /// 監視中に取り出した事実を、読み込みのたびに CSV ファイルへ追記する。
 ///
-/// 戦闘の行そのもの（1+2 をまとめて読むときは重複を除いた行）も、同じ名前の
-/// `.lines.tsv`（[rawLogColumns]）へ追記する。こちらは [masker] に関係なく名前を置き換えない。
+/// 戦闘の行そのもの（1+2 をまとめて読むときは重複を除いた行）も、同じ名前で末尾が
+/// `-生ログ.tsv` のファイル（[rawLogColumns]）へ追記する。こちらは [masker] に関係なく名前を置き換えない。
 ///
-/// ファイルは最初に書く行が来たときに作る（`vana-log-YYYYMMDD-HHMMSS-w<ウィンドウ>.csv`。
+/// ファイルは最初に書く行が来たときに作る（`vana-log-YYYYMMDD-HHMMSS-w<ウィンドウ>-集計.csv`。
 /// 1 と 2 をまとめて読むときは `w12`）。
 /// 書けなかった行（Excel で開いていてロックされているなど）は手元に残し、次の [add] で書き直す。
 /// [masker] を渡すと、名前を置き換えてから書く。番号は初めて見た順に付け、書いた後は変えない。
@@ -189,10 +189,10 @@ class CsvRecorder {
   String get _base =>
       '${directory.path}${Platform.pathSeparator}vana-log-$stamp-w${session.window == bothWindows ? '12' : session.window}';
 
-  late final File file = File('$_base.csv');
+  late final File file = File('$_base-集計.csv');
 
   /// 戦闘の行そのものを書くファイル。
-  late final File linesFile = File('$_base.lines.tsv');
+  late final File linesFile = File('$_base-生ログ.tsv');
 
   final List<Map<String, Object?>> _pending = [];
   final List<({LogLine line, DateTime? observedAt})> _pendingLines = [];

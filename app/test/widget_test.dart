@@ -334,7 +334,7 @@ void main() {
     expect(monitor.window, bothWindows);
     expect(monitor.session!.summary.summaries().single.damage, 150);
     expect(monitor.recorder!.written, 2);
-    expect(monitor.recorder!.file.path, endsWith('-w12.csv'));
+    expect(monitor.recorder!.file.path, endsWith('-w12-集計.csv'));
     monitor.stop();
     await tester.pump(const Duration(seconds: 1));
   });
@@ -384,8 +384,8 @@ void main() {
     expect(r2.written, 1);
     expect(monitor.session!.summary.summaries().single.damage, 150);
     final outFiles = Directory('${dir.path}/out').listSync().map((f) => f.path);
-    expect(outFiles.where((p) => p.endsWith('.csv')), hasLength(2));
-    expect(outFiles.where((p) => p.endsWith('.lines.tsv')), hasLength(2));
+    expect(outFiles.where((p) => p.endsWith('-集計.csv')), hasLength(2));
+    expect(outFiles.where((p) => p.endsWith('-生ログ.tsv')), hasLength(2));
     expect(r1.linesWritten, 2);
     monitor.stop();
     await tester.pump(const Duration(seconds: 1));

@@ -216,7 +216,7 @@ void main() {
     test('CSV のファイル名は w12', () {
       final out = Directory('${dir.path}/out')..createSync();
       final r = CsvRecorder(directory: out, session: m, now: DateTime(2026, 11, 20, 9));
-      expect(r.file.path, endsWith('vana-log-20261120-090000-w12.csv'));
+      expect(r.file.path, endsWith('vana-log-20261120-090000-w12-集計.csv'));
     });
   });
 }
