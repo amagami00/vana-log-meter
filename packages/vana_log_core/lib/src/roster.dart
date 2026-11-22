@@ -4,7 +4,11 @@ import 'combat.dart';
 const _selfModes = {0x14, 0x15};
 
 /// 味方の通常攻撃・ミスに使われるメッセージ種別。
-const _allyMeleeModes = {0x14, 0x15, 0x19, 0x1A};
+const _allyMeleeModes = {0x14, 0x15, 0x19, 0x1A, _outsideMode};
+
+/// パーティの外（同盟の別のパーティなど）の行動に使われるメッセージ種別。
+/// 近くにいるだけの他人の行動も含みうるが、味方として数える。
+const _outsideMode = 0xA3;
 
 /// 敵の行動に使われるメッセージ種別（0x1C / 0x1D は自分が受けた攻撃の命中・ミス）。
 const _enemyModes = {0x1B, 0x1C, 0x1D, 0x20, 0x69};
@@ -33,6 +37,11 @@ class Roster {
         allies.add(e.actor);
         self.add(e.actor);
         enemies.add(e.target);
+      } else if (mode == _outsideMode && offensive && !e.actorInferred) {
+        // 殴らずに魔法だけで戦う、パーティの外の味方。範囲攻撃のつなぎ違いで敵が
+        // 味方に入らないよう、敵と分かっている名前は味方にしない。
+        if (!enemies.contains(e.actor)) allies.add(e.actor);
+        if (!allies.contains(e.target)) enemies.add(e.target);
       } else if (_enemyModes.contains(mode)) {
         enemies.add(e.actor);
         allies.add(e.target);

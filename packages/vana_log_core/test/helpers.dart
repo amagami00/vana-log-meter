@@ -62,10 +62,10 @@ Uint8List logFile(List<List<int>> lines) {
 }
 
 /// 本文の文字列から LogLine を作る。
-LogLine logLine(String text, {int mode = 0x14, int msg = 1, int line = 1}) {
+LogLine logLine(String text, {int mode = 0x14, int msg = 1, int line = 1, int window = 1}) {
   final r = parseLogFile(
     logFile([lineBytes((mode: mode, msg: msg, line: line, body: sjis(text)))]),
-    window: 1,
+    window: window,
     fileIndex: 0,
   );
   return r.lines.single;
