@@ -168,11 +168,11 @@ String rawLogRows(List<({LogLine line, DateTime? observedAt})> lines) {
 
 /// 監視中に取り出した事実を、読み込みのたびに CSV ファイルへ追記する。
 ///
-/// 戦闘の行そのもの（1+2 をまとめて読むときは重複を除いた行）も、同じ名前の
-/// `.lines.tsv`（[rawLogColumns]）へ追記する。こちらは [masker] に関係なく名前を置き換えない。
+/// 戦闘の行そのもの（1+2 をまとめて読むときは重複を除いた行）も、種類の部分が `raw` の
+/// `.tsv`（[rawLogColumns]）へ追記する。こちらは [masker] に関係なく名前を置き換えない。
 ///
-/// ファイルは最初に書く行が来たときに作る（`vana-log-YYYYMMDD-HHMMSS-w<ウィンドウ>.csv`。
-/// 1 と 2 をまとめて読むときは `w12`）。
+/// ファイルは最初に書く行が来たときに作る（`vanalog-YYYYMMDD-HHMMSS-events-<ウィンドウ>.csv` と
+/// `vanalog-YYYYMMDD-HHMMSS-raw-<ウィンドウ>.tsv`。ウィンドウは `01`・`02`・`12`（1+2））。
 /// 書けなかった行（Excel で開いていてロックされているなど）は手元に残し、次の [add] で書き直す。
 /// [masker] を渡すと、名前を置き換えてから書く。番号は初めて見た順に付け、書いた後は変えない。
 class CsvRecorder {
@@ -186,13 +186,15 @@ class CsvRecorder {
   /// `session` 列の値とファイル名に使う日時。
   final String stamp;
 
-  String get _base =>
-      '${directory.path}${Platform.pathSeparator}vana-log-$stamp-w${session.window == bothWindows ? '12' : session.window}';
+  String _path(String kind, String ext) {
+    final w = session.window == bothWindows ? '12' : '0${session.window}';
+    return '${directory.path}${Platform.pathSeparator}vanalog-$stamp-$kind-$w.$ext';
+  }
 
-  late final File file = File('$_base.csv');
+  late final File file = File(_path('events', 'csv'));
 
   /// 戦闘の行そのものを書くファイル。
-  late final File linesFile = File('$_base.lines.tsv');
+  late final File linesFile = File(_path('raw', 'tsv'));
 
   final List<Map<String, Object?>> _pending = [];
   final List<({LogLine line, DateTime? observedAt})> _pendingLines = [];

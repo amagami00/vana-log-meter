@@ -213,10 +213,10 @@ void main() {
       expect(m.eventCount, 2);
     });
 
-    test('CSV のファイル名は w12', () {
+    test('CSV のファイル名のウィンドウは 12', () {
       final out = Directory('${dir.path}/out')..createSync();
       final r = CsvRecorder(directory: out, session: m, now: DateTime(2026, 11, 20, 9));
-      expect(r.file.path, endsWith('vana-log-20261120-090000-w12.csv'));
+      expect(r.file.path, endsWith('vanalog-20261120-090000-events-12.csv'));
     });
   });
 }

@@ -9,7 +9,7 @@ dart run bin/vana_log.dart -i <TEMP のディレクトリ> -o <出力先> [-w 1|
 ```
 
 - 読解率（戦闘の行のうち読めた割合）を表示する。`--show-unparsed` で読めなかった行も出す。
-- 出力は `vana-log-YYYYMMDD-HHMMSS.csv`（`CsvRecorder` は `vana-log-YYYYMMDD-HHMMSS-w<ウィンドウ>.csv`、両方なら `w12`）。CSV は UTF-8（BOM 付き）・CRLF。`CsvRecorder` は戦闘の行そのものも同じ名前の `.lines.tsv`（タブ区切り、名前は置き換えない）に書く。
+- 出力は `vanalog-YYYYMMDD-HHMMSS-events.csv`（`CsvRecorder` は `vanalog-YYYYMMDD-HHMMSS-events-<ウィンドウ>.csv`。ウィンドウは `01`・`02`・`12`（両方））。CSV は UTF-8（BOM 付き）・CRLF。`CsvRecorder` は戦闘の行そのものも`vanalog-YYYYMMDD-HHMMSS-raw-<ウィンドウ>.tsv`（タブ区切り、名前は置き換えない）に書く。
 - 列名は battlelog の CSV に合わせ、ネイティブログから取れる列だけを出す。
 - `RecordedLog.addCsv` で記録した CSV を読み戻し、監視中と同じ形で集計する（CSV の読み取りは `package:csv`）。
 
