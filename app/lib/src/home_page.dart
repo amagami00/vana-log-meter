@@ -456,7 +456,7 @@ class _HomePageState extends State<HomePage> {
                                   if (selected != null) ...[
                                     const VerticalDivider(width: 1),
                                     SizedBox(
-                                      width: 340,
+                                      width: 400,
                                       child: ActorDetailPanel(
                                         summary: selected,
                                         name: display(selected.name),
