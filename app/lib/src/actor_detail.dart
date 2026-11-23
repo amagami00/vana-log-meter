@@ -224,15 +224,21 @@ class _WsTable extends StatelessWidget {
       fontFeatures: const [FontFeature.tabularFigures()],
     );
     final head = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline);
+    // 数値の列は中身の幅に合わせて折り返さない。残りの幅を WS 名の列に回す。
     Widget cell(String t, TextStyle? style, {bool right = true}) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
-      child: Text(t, style: style, textAlign: right ? TextAlign.right : TextAlign.left),
+      child: Text(
+        t,
+        style: style,
+        textAlign: right ? TextAlign.right : TextAlign.left,
+        softWrap: !right,
+      ),
     );
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: Table(
-        columnWidths: const {0: FlexColumnWidth(2.2)},
-        defaultColumnWidth: const FlexColumnWidth(),
+        columnWidths: const {0: FlexColumnWidth()},
+        defaultColumnWidth: const IntrinsicColumnWidth(),
         children: [
           TableRow(
             children: [
