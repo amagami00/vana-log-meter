@@ -165,11 +165,9 @@ void main() {
     final s = await Settings.load();
     s
       ..inputDir = '/x'
-      ..window = 2
       ..jobs = {'A': '暗/侍', 'B': ' '};
     final again = await Settings.load();
     expect(again.inputDir, '/x');
-    expect(again.window, 2);
     expect(again.jobs, {'A': '暗/侍'});
   });
 
@@ -213,7 +211,7 @@ void main() {
     File(out.path).writeAsStringSync('x');
     final monitor = LogMonitor()
       ..recorderFactory = (s, t) => CsvRecorder(directory: out, session: s, now: t);
-    monitor.start(dir.path, 1);
+    monitor.start(dir.path);
     final r = monitor.recorder!;
     expect(r.pending, 2); // CSV 1 行 + 戦闘の行 1 行
     monitor.stop();
@@ -237,7 +235,7 @@ void main() {
     final out = Directory('${dir.path}/out');
     final monitor = LogMonitor()
       ..recorderFactory = (s, t) => CsvRecorder(directory: out, session: s, now: t);
-    monitor.start(dir.path, 1);
+    monitor.start(dir.path);
     final r = monitor.recorder!;
     expect(r.written, 0);
     expect(r.linesWritten, 1);
@@ -263,7 +261,7 @@ void main() {
         Directory(r.linesFile.path).createSync();
         return r;
       };
-    monitor.start(dir.path, 1);
+    monitor.start(dir.path);
     expect(r.written, 1);
     expect(r.linesWritten, 0);
     expect(r.pending, 1);
@@ -299,19 +297,14 @@ void main() {
     await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
     expect(find.textContaining('中のフォルダを選んでください'), findsOneWidget);
 
-    // 選んだウィンドウのログだけが無い。
-    settings
-      ..inputDir = '${dir.path}/Alice'
-      ..window = 2;
-    await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
-    expect(find.text('ウィンドウ 2 のログ（2_*.log）がありません'), findsOneWidget);
-    settings.window = 1;
+    // ウィンドウ 1 のログだけでもよい。
+    settings.inputDir = '${dir.path}/Alice';
     await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
     expect(find.textContaining('ありません'), findsNothing);
     monitor.dispose();
   });
 
-  testWidgets('既定の 1+2 は両方のウィンドウを重複なく集計し、12 の CSV に書く', (tester) async {
+  testWidgets('両方のウィンドウを重複なく集計し、1 つの CSV に書く', (tester) async {
     final dir = Directory.systemTemp.createTempSync('vana_log_both_');
     addTearDown(() => dir.deleteSync(recursive: true));
     // メッセージ 1 は両方に、2 はウィンドウ 2 だけに出る。行番号はウィンドウごとに違う。
@@ -333,67 +326,13 @@ void main() {
     await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
     await tester.tap(find.text('開始'));
     await tester.pump();
-    expect(monitor.window, bothWindows);
     expect(monitor.session!.summary.summaries().single.damage, 150);
     expect(monitor.recorder!.written, 2);
-    expect(monitor.recorder!.file.path, endsWith('-events-12.csv'));
+    expect(monitor.recorder!.file.path, endsWith('-events.csv'));
     monitor.stop();
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('ウィンドウを切り替えても読んだ行を CSV に書き直さない', (tester) async {
-    final dir = Directory.systemTemp.createTempSync('vana_log_window_');
-    addTearDown(() => dir.deleteSync(recursive: true));
-    File('${dir.path}/1_0.log').writeAsBytesSync(
-      logFile([lineBytes((mode: 0x14, msg: 1, line: 1, body: sjis('Aliceの攻撃→Goblinに、120ダメージ。')))]),
-    );
-    File('${dir.path}/2_0.log').writeAsBytesSync(
-      logFile([lineBytes((mode: 0x14, msg: 1, line: 1, body: sjis('Aliceの攻撃→Orcに、70ダメージ。')))]),
-    );
-    SharedPreferences.setMockInitialValues({});
-    final settings = await Settings.load();
-    settings
-      ..inputDir = dir.path
-      ..outputDir = '${dir.path}/out'
-      ..window = 1;
-    final monitor = LogMonitor();
-    await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
-    await tester.tap(find.text('開始'));
-    await tester.pump();
-    final r1 = monitor.recorder!;
-    expect(r1.written, 1);
-
-    await tester.tap(find.text('ウィンドウ 2'));
-    await tester.pump();
-    final r2 = monitor.recorder!;
-    expect(r2, isNot(same(r1)));
-    expect(r2.written, 1);
-    expect(r2.file.path, isNot(r1.file.path));
-    // 同じ区切りのファイルは、後から読み始めたウィンドウでも開始の日時をそろえる。
-    expect(r2.stamp, r1.stamp);
-
-    // ウィンドウ 2 を表示している間に出たウィンドウ 1 の行も、ウィンドウ 1 の CSV に追記する。
-    File('${dir.path}/1_0.log').writeAsBytesSync(
-      logFile([
-        lineBytes((mode: 0x14, msg: 1, line: 1, body: sjis('Aliceの攻撃→Goblinに、120ダメージ。'))),
-        lineBytes((mode: 0x14, msg: 2, line: 2, body: sjis('Aliceの攻撃→Goblinに、30ダメージ。'))),
-      ]),
-    );
-    await tester.pump(const Duration(seconds: 1));
-
-    await tester.tap(find.text('ウィンドウ 1'));
-    await tester.pump();
-    expect(monitor.recorder, same(r1));
-    expect(r1.written, 2);
-    expect(r2.written, 1);
-    expect(monitor.session!.summary.summaries().single.damage, 150);
-    final outFiles = Directory('${dir.path}/out').listSync().map((f) => f.path);
-    expect(outFiles.where((p) => p.endsWith('.csv')), hasLength(2));
-    expect(outFiles.where((p) => p.endsWith('.tsv')), hasLength(2));
-    expect(r1.linesWritten, 2);
-    monitor.stop();
-    await tester.pump(const Duration(seconds: 1));
-  });
   test('絞り込みは大小・全角半角・ひらがなとカタカナを区別しない', () {
     expect(normalizeForSearch('ＧＯＢ'), normalizeForSearch('gob'));
     expect(normalizeForSearch('ごぶりん'), normalizeForSearch('ゴブリン'));

@@ -96,7 +96,7 @@ class _HomePageState extends State<HomePage> {
     final dir = await getDirectoryPath(initialDirectory: _s.inputDir, confirmButtonText: '選択');
     if (dir == null) return;
     setState(() => _s.inputDir = dir);
-    if (_m.running) _m.start(dir, _s.window, includePast: _s.includePast);
+    if (_m.running) _m.start(dir, includePast: _s.includePast);
   }
 
   Future<void> _pickOutput() async {
@@ -112,7 +112,7 @@ class _HomePageState extends State<HomePage> {
       _m.stop();
     } else if (dir != null) {
       _loaded = null;
-      _m.start(dir, _s.window, includePast: _s.includePast);
+      _m.start(dir, includePast: _s.includePast);
     }
   }
 
@@ -130,15 +130,8 @@ class _HomePageState extends State<HomePage> {
     } on FileSystemException catch (e) {
       return (message: 'フォルダを読めません: ${e.message}', missing: false);
     }
-    final windows = {
-      for (final e in entries)
-        if (e is File) parseLogFileName(e.uri.pathSegments.last)?.window,
-    };
-    if (windows.contains(_s.window) || (_s.window == bothWindows && windows.isNotEmpty)) {
+    if (entries.any((e) => e is File && parseLogFileName(e.uri.pathSegments.last) != null)) {
       return null;
-    }
-    if (windows.isNotEmpty) {
-      return (message: 'ウィンドウ ${_s.window} のログ（${_s.window}_*.log）がありません', missing: false);
     }
     bool hasLogs(Directory d) {
       try {
@@ -255,19 +248,6 @@ class _HomePageState extends State<HomePage> {
                     runSpacing: 8,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      SegmentedButton<int>(
-                        segments: const [
-                          ButtonSegment(value: bothWindows, label: Text('ウィンドウ 1+2')),
-                          ButtonSegment(value: 1, label: Text('ウィンドウ 1')),
-                          ButtonSegment(value: 2, label: Text('ウィンドウ 2')),
-                        ],
-                        selected: {_s.window},
-                        onSelectionChanged: (v) {
-                          setState(() => _s.window = v.first);
-                          // 表示だけを切り替える。読んだ行を読み直したり、CSV を区切ったりしない。
-                          _m.select(_s.window);
-                        },
-                      ),
                       FilledButton.icon(
                         // 監視中は止められるようにする。フォルダが無いときは開始させない。
                         onPressed:
