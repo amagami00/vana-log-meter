@@ -15,38 +15,32 @@ class LogMonitor extends ChangeNotifier {
 
   final Duration interval;
 
-  /// ウィンドウごとの集計。監視中に一度選んだウィンドウは、表示を切り替えても読み続ける。
-  final Map<int, LogSession> _sessions = {};
+  /// ウィンドウ 1 と 2 を重複なくまとめた集計。
+  LogSession? _session;
 
-  /// ウィンドウごとのいま追記している CSV。
-  final Map<int, CsvRecorder> _recorders = {};
+  /// いま追記している CSV。
+  CsvRecorder? _recorder;
 
   String? _dir;
-  int _window = 1;
-  bool _includePast = true;
   Timer? _timer;
   Timer? _debounce;
   StreamSubscription<WatchEvent>? _watch;
   bool _polling = false;
   String? error;
 
-  /// 表示しているウィンドウの集計。
-  LogSession? get session => _sessions[_window];
-
-  /// 表示しているウィンドウ。
-  int get window => _window;
+  /// いまの集計。
+  LogSession? get session => _session;
   bool get running => _timer != null;
 
   /// 記録先の CSV を作る。記録しない設定なら null を返す。新しい事実か戦闘の行が来るたびに、
-  /// 記録先がまだなければ呼ぶ。[startedAt] はファイル名に使う日時で、区切りの中では
-  /// すべてのウィンドウで同じ値になる。
+  /// 記録先がまだなければ呼ぶ。[startedAt] はファイル名に使う日時（区切った時刻）。
   CsvRecorder? Function(LogSession session, DateTime startedAt)? recorderFactory;
 
   /// いまの区切りを始めた日時（開始・停止・「ここから集計」・区切りの時刻）。
   DateTime _startedAt = DateTime.now();
 
-  /// 表示しているウィンドウのいま追記している CSV。まだ書く事実がないか、記録しない設定なら null。
-  CsvRecorder? get recorder => _recorders[_window];
+  /// いま追記している CSV。まだ書く事実がないか、記録しない設定なら null。
+  CsvRecorder? get recorder => _recorder;
 
   /// 閉じたが、まだ書けていない行が残っている CSV。書けるまで書き直す。
   final List<CsvRecorder> _draining = [];
@@ -55,7 +49,7 @@ class LogMonitor extends ChangeNotifier {
   /// 閉じた CSV のうち、まだ書けていない行の数。
   int get unsaved => _draining.fold(0, (a, r) => a + r.pending);
 
-  /// いまの CSV を（すべてのウィンドウで）閉じる。次に事実が来たら新しいファイルに書く。
+  /// いまの CSV を閉じる。次に事実が来たら新しいファイルに書く。
   /// 開始・停止・「ここから集計」・記録の設定を変えたときに呼ぶ。
   /// 書けていない行は捨てず、書けるまで書き直す（停止中も）。
   void cut() {
@@ -65,11 +59,10 @@ class LogMonitor extends ChangeNotifier {
 
   void _close() {
     _startedAt = DateTime.now();
-    for (final r in _recorders.values) {
-      if (r.pending > 0) r.add(const []);
-      if (r.pending > 0) _draining.add(r);
-    }
-    _recorders.clear();
+    final r = _recorder;
+    if (r != null && r.pending > 0) r.add(const []);
+    if (r != null && r.pending > 0) _draining.add(r);
+    _recorder = null;
     if (_draining.isNotEmpty) _drainTimer ??= Timer.periodic(interval, (_) => _drain());
   }
 
@@ -88,19 +81,15 @@ class LogMonitor extends ChangeNotifier {
 
   /// [dir] の監視を始める。それまでの集計は捨てる。
   /// [includePast] が false なら、いま残っている行は集計に入れず、この後に出た行だけを数える。
-  void start(String dir, int window, {bool includePast = true}) =>
-      _start(dir, window, {window}, includePast: includePast);
-
-  void _start(String dir, int window, Set<int> windows, {required bool includePast}) {
+  void start(String dir, {bool includePast = true}) {
     stop();
-    _sessions.clear();
     error = null;
     _dir = dir;
-    _window = window;
-    _includePast = includePast;
-    for (final w in windows) {
-      _open(w);
-    }
+    _session = LogSession(
+      directory: Directory(dir),
+      window: bothWindows,
+      skipExisting: !includePast,
+    );
     poll();
     _timer = Timer.periodic(interval, (_) => poll());
     try {
@@ -127,30 +116,12 @@ class LogMonitor extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _open(int window) => _sessions[window] = LogSession(
-    directory: Directory(_dir!),
-    window: window,
-    skipExisting: !_includePast,
-  );
-
-  /// 表示するウィンドウを変える。それまで見ていたウィンドウの集計と CSV は閉じずに続ける
-  /// （読み直しや書き直しをしない）。監視中に初めて選んだウィンドウは、ここから読み始める。
-  void select(int window) {
-    if (window == _window) return;
-    _window = window;
-    if (running && !_sessions.containsKey(window)) {
-      _open(window);
-      poll();
-    }
-    notifyListeners();
-  }
-
-  /// 集計を捨てて、この後に出た行だけを数え直す。読んでいたウィンドウはすべて数え直す。
+  /// 集計を捨てて、この後に出た行だけを数え直す。
   void reset() {
     final dir = _dir;
-    if (dir == null || _sessions.isEmpty) return;
+    if (dir == null || _session == null) return;
     final wasRunning = running;
-    _start(dir, _window, {..._sessions.keys}, includePast: false);
+    start(dir, includePast: false);
     if (!wasRunning) stop();
   }
 
@@ -162,30 +133,24 @@ class LogMonitor extends ChangeNotifier {
   /// ディレクトリを読み直す。前回の読み込みが終わっていなければ何もしない。
   void poll() {
     final dir = _dir;
-    if (dir == null || _sessions.isEmpty || _polling) return;
+    final s = _session;
+    if (dir == null || s == null || _polling) return;
     _polling = true;
     try {
-      var any = false;
-      for (final MapEntry(key: w, value: s) in _sessions.entries) {
-        final added = s.poll();
-        final lines = s.lastCombatLines;
-        final fresh = added.isNotEmpty || lines.isNotEmpty;
-        any |= fresh;
-        if (fresh && !_recorders.containsKey(w)) {
-          final r = recorderFactory?.call(s, _startedAt);
-          if (r != null) _recorders[w] = r;
-        }
-        final r = _recorders[w];
-        if (r != null && (fresh || r.pending > 0)) {
-          final hadError = r.error != null;
-          r.add(added, lines: lines);
-          if (hadError != (r.error != null)) notifyListeners();
-        }
+      final added = s.poll();
+      final lines = s.lastCombatLines;
+      final fresh = added.isNotEmpty || lines.isNotEmpty;
+      if (fresh && _recorder == null) _recorder = recorderFactory?.call(s, _startedAt);
+      final r = _recorder;
+      if (r != null && (fresh || r.pending > 0)) {
+        final hadError = r.error != null;
+        r.add(added, lines: lines);
+        if (hadError != (r.error != null)) notifyListeners();
       }
       if (!Directory(dir).existsSync()) {
         error = 'フォルダが見つかりません: $dir';
         notifyListeners();
-      } else if (any || error != null) {
+      } else if (fresh || error != null) {
         error = null;
         notifyListeners();
       }
