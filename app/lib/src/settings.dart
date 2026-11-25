@@ -16,6 +16,10 @@ class Settings {
   String? get outputDir => _prefs.getString('outputDir');
   set outputDir(String? v) => _set('outputDir', v);
 
+  /// 敵のフィルタセット（`*.json`）を置くフォルダ。
+  String? get filterDir => _prefs.getString('filterDir');
+  set filterDir(String? v) => _set('filterDir', v);
+
   /// 開始したとき、フォルダに残っている過去のログも集計に入れる。
   bool get includePast => _prefs.getBool('includePast') ?? true;
   set includePast(bool v) => _prefs.setBool('includePast', v);

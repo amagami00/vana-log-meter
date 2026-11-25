@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show Scrollable;
-import 'package:material_ui/material_ui.dart' show CheckboxMenuButton, OutlinedButton, TextField;
+import 'package:material_ui/material_ui.dart'
+    show CheckboxMenuButton, OutlinedButton, Switch, SwitchListTile, TextField;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vana_log_core/vana_log_core.dart';
@@ -387,6 +388,69 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Goblin'));
     await tester.pumpAndSettle();
     expect(find.text('Kobold（7）'), findsOneWidget);
+    monitor.stop();
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('フィルタのタブでセットを ON にすると、その敵で絞り込む', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('vana_log_sets_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final logs = Directory('${dir.path}/logs')..createSync();
+    final filters = Directory('${dir.path}/filters')..createSync();
+    var n = 0;
+    List<int> l(String text, int mode) =>
+        lineBytes((mode: mode, msg: ++n, line: n, body: sjis(text)));
+    File('${logs.path}/1_0.log').writeAsBytesSync(
+      logFile([l('Aliceの攻撃→Goblinに、100ダメージ。', 0x14), l('Bobの攻撃→Orcに、30ダメージ。', 0x19)]),
+    );
+    File('${filters.path}/a.json')
+        .writeAsStringSync('{"name": "ゴブリン類", "enemies": ["Goblin", "Ghatjot"]}');
+    File('${filters.path}/b.json').writeAsStringSync('{');
+    File('${filters.path}/c.json')
+        .writeAsStringSync('{"name": "Goblin だけ", "enemies": ["Goblin"]}');
+    SharedPreferences.setMockInitialValues({});
+    final settings = await Settings.load();
+    settings.inputDir = logs.path;
+    settings.filterDir = filters.path;
+    final monitor = LogMonitor();
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
+    await tester.tap(find.text('開始'));
+    await tester.pump();
+    expect(find.text('Bob'), findsOneWidget);
+
+    await tester.tap(find.text('フィルタ').last);
+    await tester.pumpAndSettle();
+    expect(find.text('ゴブリン類'), findsOneWidget);
+    expect(find.textContaining('ログに出ている敵: 1 / 2 体'), findsOneWidget);
+    expect(find.text('b.json'), findsOneWidget);
+
+    await tester.tap(find.text('ゴブリン類'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('集計'));
+    await tester.pumpAndSettle();
+    expect(find.text('Goblin'), findsOneWidget); // 敵のメニューのボタン
+    expect(find.text('Bob'), findsNothing);
+
+    // 含まれるセットも ON に見え、それを OFF にすると含む側も OFF になる。
+    await tester.tap(find.text('フィルタ').last);
+    await tester.pumpAndSettle();
+    Switch switchOf(String name) => tester.widget<Switch>(
+      find.descendant(
+        of: find.ancestor(of: find.text(name), matching: find.byType(SwitchListTile)),
+        matching: find.byType(Switch),
+      ),
+    );
+    expect(switchOf('Goblin だけ').value, isTrue);
+    await tester.tap(find.text('Goblin だけ'));
+    await tester.pumpAndSettle();
+    expect(switchOf('Goblin だけ').value, isFalse);
+    expect(switchOf('ゴブリン類').value, isFalse);
+    await tester.tap(find.text('集計'));
+    await tester.pumpAndSettle();
+    expect(find.text('すべての敵'), findsOneWidget);
+    expect(find.text('Bob'), findsOneWidget);
     monitor.stop();
     await tester.pump(const Duration(seconds: 1));
   });

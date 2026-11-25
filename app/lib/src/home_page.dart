@@ -7,6 +7,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:vana_log_core/vana_log_core.dart';
 
 import 'actor_detail.dart';
+import 'filter_sets_tab.dart';
 import 'jobs_dialog.dart';
 import 'monitor.dart';
 import 'multi_select.dart';
@@ -31,6 +32,7 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _m.addListener(_changed);
     _m.recorderFactory = _newRecorder;
+    _reloadFilters();
   }
 
   @override
@@ -45,6 +47,29 @@ class _HomePageState extends State<HomePage> {
   /// 集計を絞り込む敵と味方。空ならすべて。
   Set<String> _enemies = {};
   Set<String> _people = {};
+
+  /// フィルタのフォルダを読んだ結果。フォルダが未選択なら null。
+  FilterSetLoad? _filterLoad;
+
+  /// フィルタのフォルダを読み直す。監視中の再描画では読まない（選択時と「読み直す」だけ）。
+  void _reloadFilters() {
+    final dir = _s.filterDir;
+    final load = dir == null ? null : loadFilterSets(Directory(dir));
+    if (mounted) setState(() => _filterLoad = load);
+  }
+
+  Future<void> _pickFilterDir() async {
+    final dir = await getDirectoryPath(initialDirectory: _s.filterDir, confirmButtonText: '選択');
+    if (dir == null) return;
+    _s.filterDir = dir;
+    _reloadFilters();
+  }
+
+  /// セットの敵を絞り込みに加える・外す。外すときは、ほかのセットと重なる敵も外す
+  /// （残すと、ほかのセットに含まれるセットを OFF にできない）。
+  void _toggleSet(FilterSet set, bool on) => setState(
+    () => _enemies = on ? {..._enemies, ...set.enemies} : _enemies.difference(set.enemies.toSet()),
+  );
 
   /// 詳細を開いている味方（実名）。null なら閉じている。
   String? _selected;
@@ -224,7 +249,7 @@ class _HomePageState extends State<HomePage> {
         : 'まだ戦闘の記録がありません';
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(title: const Text('vana-log-meter')),
         body: Column(
@@ -357,6 +382,7 @@ class _HomePageState extends State<HomePage> {
               tabs: [
                 Tab(text: '集計'),
                 Tab(text: 'ログ'),
+                Tab(text: 'フィルタ'),
               ],
             ),
             Expanded(
@@ -384,7 +410,15 @@ class _HomePageState extends State<HomePage> {
                               short: (n) => n,
                               searchable: true,
                               selected: chosenEnemies,
-                              onChanged: (v) => setState(() => _enemies = v),
+                              // ログに出ていない敵（フィルタセットで選んだもの）は残す。解除ならすべて外す。
+                              onChanged: (v) => setState(
+                                () => _enemies = v.isEmpty
+                                    ? {}
+                                    : {
+                                        ...v,
+                                        ..._enemies.difference({for (final e in enemies) e.name}),
+                                      },
+                              ),
                             ),
                             const SizedBox(width: 16),
                             const Text('人'),
@@ -454,6 +488,30 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                   _LogView(lines: view?.lines ?? const [], empty: emptyMessage, masker: masker),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: _DirRow(
+                          label: 'フィルタ',
+                          hint: 'フィルタセット（*.json）を置くフォルダを選んでください',
+                          path: _s.filterDir,
+                          onPick: _pickFilterDir,
+                        ),
+                      ),
+                      Expanded(
+                        child: FilterSetsTab(
+                          folder: _s.filterDir,
+                          load: _filterLoad,
+                          selected: _enemies,
+                          present: {for (final e in enemies) e.name},
+                          onReload: _reloadFilters,
+                          onToggle: _toggleSet,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),

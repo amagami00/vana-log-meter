@@ -5,6 +5,7 @@ library;
 export 'src/combat.dart';
 export 'src/cp932.dart' show decodeCp932, isCp932LeadByte;
 export 'src/export.dart';
+export 'src/filter_set.dart';
 export 'src/log_file.dart';
 export 'src/log_store.dart';
 export 'src/masker.dart';
