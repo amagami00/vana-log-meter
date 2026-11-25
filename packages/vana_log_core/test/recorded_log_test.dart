@@ -177,4 +177,102 @@ void main() {
     expect(log.eventCount, 0);
     expect(log.sources, isEmpty);
   });
+
+  group('生ログの TSV', () {
+    /// 監視中の流れを再現し、集計と生ログの TSV を返す。時刻は秒単位（TSV の精度）にそろえる。
+    ({SummaryAccumulator live, String tsv}) recordRaw(
+      List<List<(String, int, int)>> batches,
+      List<DateTime?> times,
+    ) {
+      final p = CombatParser();
+      final roster = Roster();
+      final live = SummaryAccumulator();
+      final sb = StringBuffer(rawLogHeader());
+      var n = 0;
+      for (final (i, batch) in batches.indexed) {
+        final added = <CombatEvent>[];
+        final lines = <({LogLine line, DateTime? observedAt})>[];
+        for (final (text, mode, msg) in batch) {
+          final line = logLine(text, mode: mode, msg: msg, line: ++n);
+          added.addAll(p.add(line, observedAt: times[i]));
+          if (p.lastCategory != LineCategory.other) lines.add((line: line, observedAt: times[i]));
+        }
+        roster.addAll(added);
+        live.add(added, roster);
+        sb.write(rawLogRows(lines));
+      }
+      return (live: live, tsv: sb.toString());
+    }
+
+    final s0 = DateTime(2026, 11, 20, 12, 0, 5);
+    final secTimes = [null, s0, s0.add(const Duration(seconds: 3))];
+
+    test('解釈し直して、監視中と同じ集計になる', () {
+      final rec = recordRaw(batches, secTimes);
+      final log = RecordedLog()..addRawTsv(rec.tsv, source: 'a-raw.tsv');
+      expect(describe(log.summary.summaries()), describe(rec.live.summaries()));
+      expect(log.summary.enemies(), rec.live.enemies());
+      expect(log.summary.timeOf(), rec.live.timeOf());
+      expect(log.eventCount, rec.live.count);
+      expect(log.names, containsAll(['Alice', 'Bob', 'Goblin', 'Orc']));
+      expect(log.combatLines.length, 9);
+      expect(log.combatLines.first.observedAt, isNull);
+      expect(log.combatLines.last.observedAt, s0.add(const Duration(seconds: 3)));
+      expect(log.combatLines.first.line.lineNo, 1);
+      expect(log.sources, ['a-raw.tsv']);
+    });
+
+    test('time はミリ秒まで書き、読み戻すと戦闘時間も監視中と同じ', () {
+      final rec = recordRaw(batches, times);
+      expect(rec.tsv, contains('2026-11-20 12:00:05.250\t'));
+      final log = RecordedLog()..addRawTsv(rec.tsv, source: 'a-raw.tsv');
+      expect(describe(log.summary.summaries()), describe(rec.live.summaries()));
+      expect(log.summary.timeOf(), const Duration(milliseconds: 4500));
+      expect(log.combatLines.last.observedAt, times.last);
+    });
+
+    test('time が秒単位の古い TSV も読む', () {
+      final rec = recordRaw(batches, secTimes);
+      final old = rec.tsv.replaceAll(RegExp(r'\.\d{3}\t'), '\t');
+      expect(old, isNot(contains('.000\t')));
+      final log = RecordedLog()..addRawTsv(old, source: 'old-raw.tsv');
+      expect(describe(log.summary.summaries()), describe(rec.live.summaries()));
+    });
+
+    test('引用符を含む本文と、BOM なし・LF 改行を読む', () {
+      final tsv =
+          rawLogHeader().substring(1).replaceAll('\r\n', '\n') +
+          rawLogRows([(line: logLine('"Alice"の攻撃→Goblinに、7ダメージ。'), observedAt: s0)])
+              .replaceAll('\r\n', '\n');
+      final log = RecordedLog()..addRawTsv(tsv, source: 'b-raw.tsv');
+      expect(log.combatLines.single.line.text, '"Alice"の攻撃→Goblinに、7ダメージ。');
+      expect(log.eventCount, 1);
+    });
+
+    test('このアプリの TSV でなければ読まず、集計も変えない', () {
+      final log = RecordedLog();
+      expect(
+        () => log.addRawTsv('a\tb\r\n1\t2\r\n', source: 'x.tsv'),
+        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('log_window'))),
+      );
+      expect(() => log.addRawTsv('', source: 'z.tsv'), throwsFormatException);
+      final good = recordRaw(batches, secTimes).tsv;
+      final rows = good.split('\r\n');
+      final cells = rows[3].split('\t');
+      cells[5] = 'zz'; // f1
+      rows[3] = cells.join('\t');
+      expect(
+        () => log.addRawTsv(rows.join('\r\n'), source: 'y.tsv'),
+        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('4 行目'))),
+      );
+      // 事実の CSV は生ログとしては読まない。
+      expect(
+        () => log.addRawTsv(record(batches, times).csv, source: 'c.csv'),
+        throwsFormatException,
+      );
+      expect(log.eventCount, 0);
+      expect(log.combatLines, isEmpty);
+      expect(log.sources, isEmpty);
+    });
+  });
 }

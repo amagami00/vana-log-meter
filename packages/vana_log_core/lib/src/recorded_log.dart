@@ -1,6 +1,7 @@
 import 'package:csv/csv.dart';
 
 import 'combat.dart';
+import 'export.dart' show rawLogColumns;
 import 'log_file.dart';
 import 'roster.dart';
 import 'summary.dart';
@@ -39,7 +40,7 @@ final _maskedLabel = RegExp(r' #\d+$');
 /// ゲームのキャラクター名には空白が入らないため、本物の名前とは重ならない。
 bool isMaskedLabel(String name) => _maskedLabel.hasMatch(name);
 
-/// 記録した CSV（`CsvRecorder` の出力）を読み戻し、監視中と同じ形で集計する。
+/// 記録した CSV か生ログの TSV（`CsvRecorder` の出力）を読み戻し、監視中と同じ形で集計する。
 ///
 /// 敵味方は記録した時点の判定（`side`・`enemy` 列）をそのまま使う。読み戻した後の名簿で
 /// 判定し直すと、監視中に画面で見た数字とずれるため。複数のファイルを [addCsv] すると合算する
@@ -126,6 +127,91 @@ class RecordedLog {
         final key = '${row.session}/${e.line.window}/${e.line.lineNo}';
         if (key != lastKey) combatLines.add((line: e.line, observedAt: e.observedAt));
         lastKey = key;
+      }
+      i = j;
+    }
+    sources.add(source);
+  }
+
+  /// 生ログの TSV（`CsvRecorder` の `raw` の `.tsv`）を読み、行を解釈し直して集計に加える。
+  /// このアプリの TSV でなければ [FormatException] を投げ、集計は変えない。
+  ///
+  /// 敵味方は CSV と違い、読み戻した行から監視中と同じ手順（読み込みごとに名簿→集計）で
+  /// 判定し直す。読み込みの区切りは `time` 列が変わる所とみなす。次の点で監視中の集計とずれうる。
+  /// - `time` が秒単位の古い TSV は、戦闘時間と DPS を秒未満を切り捨てた時刻で数え、
+  ///   同じ秒に 2 回読み込んだ行は 1 回の読み込みとして扱う。
+  /// - TSV には戦闘の行しかなく、記録を始める前の行（名簿や構えた WS の手がかり）も入らない。
+  void addRawTsv(String content, {required String source}) {
+    final text = content.startsWith('\uFEFF') ? content.substring(1) : content;
+    final rows = text.split(RegExp(r'\r?\n'));
+    while (rows.isNotEmpty && rows.last.isEmpty) {
+      rows.removeLast();
+    }
+    if (rows.isEmpty) throw const FormatException('TSV が空です');
+    final header = [for (final c in rows.first.split('\t')) c.trim()];
+    final index = {for (var i = 0; i < header.length; i++) header[i]: i};
+    final missing = rawLogColumns.where((c) => !index.containsKey(c)).toList();
+    if (missing.isNotEmpty) {
+      throw FormatException('vana-log-meter の生ログではありません（${missing.join('・')} の列がありません）');
+    }
+    final textAt = index['text']!;
+
+    // 先にすべての行を読み、読めない行があれば集計を変えずに投げる。
+    final parsed = <({LogLine line, String time})>[];
+    for (var r = 1; r < rows.length; r++) {
+      if (rows[r].isEmpty) continue;
+      final cells = rows[r].split('\t');
+      // 本文は書き出し時にタブを空白へ置き換えているが、念のため余った列は本文に戻す。
+      if (cells.length > header.length && textAt == header.length - 1) {
+        cells.replaceRange(textAt, cells.length, [cells.sublist(textAt).join('\t')]);
+      }
+      String cell(String c) {
+        final i = index[c]!;
+        return i < cells.length ? cells[i] : '';
+      }
+
+      try {
+        final window =
+            int.tryParse(cell('log_window')) ??
+            (throw const FormatException('log_window が数値ではありません'));
+        final fields = [for (var i = 0; i < 21; i++) cell('f$i')];
+        for (final (i, f) in fields.indexed) {
+          if (int.tryParse(f, radix: 16) == null) throw FormatException('f$i が 16 進ではありません');
+        }
+        final time = cell('time');
+        if (time.isNotEmpty && DateTime.tryParse(time.replaceFirst(' ', 'T')) == null) {
+          throw const FormatException('time を読めません');
+        }
+        parsed.add((
+          line: LogLine(window: window, fileIndex: 0, fields: fields, text: cell('text')),
+          time: time,
+        ));
+      } on FormatException catch (e) {
+        throw FormatException('${r + 1} 行目を読めません: ${e.message}');
+      }
+    }
+
+    // 監視中の LogSession.poll と同じく、1 回の読み込みごとに解釈→名簿→集計の順に進める。
+    final parser = CombatParser();
+    for (var i = 0; i < parsed.length;) {
+      var j = i + 1;
+      while (j < parsed.length && parsed[j].time == parsed[i].time) {
+        j++;
+      }
+      final time = parsed[i].time;
+      final observedAt = time.isEmpty ? null : DateTime.parse(time.replaceFirst(' ', 'T'));
+      final added = <CombatEvent>[];
+      for (final (:line, time: _) in parsed.sublist(i, j)) {
+        added.addAll(parser.add(line, observedAt: observedAt));
+        if (parser.lastCategory != LineCategory.other) {
+          combatLines.add((line: line, observedAt: observedAt));
+        }
+      }
+      roster.addAll(added);
+      summary.add(added, roster);
+      for (final e in added) {
+        if (e.actor.isNotEmpty) names.add(e.actor);
+        if (e.target.isNotEmpty) names.add(e.target);
       }
       i = j;
     }

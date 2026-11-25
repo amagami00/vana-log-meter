@@ -24,7 +24,7 @@ class _FakeSelector extends FileSelectorPlatform {
 }
 
 void main() {
-  testWidgets('停止中に CSV を開いて集計を出し、開始で監視の表示に戻る', (tester) async {
+  testWidgets('停止中に CSV と生ログの TSV を開いて集計を出し、開始で監視の表示に戻る', (tester) async {
     final dir = Directory.systemTemp.createTempSync('vana_log_open_csv_');
     addTearDown(() => dir.deleteSync(recursive: true));
     File('${dir.path}/1_0.log').writeAsBytesSync(
@@ -36,6 +36,10 @@ void main() {
           toRows([...CombatParser().add(logLine('Bobの攻撃→Orcに、77ダメージ。', line: 1))], session: 's1'),
         ),
       );
+    File('${dir.path}/rec-raw.tsv').writeAsStringSync(
+      rawLogHeader() +
+          rawLogRows([(line: logLine('Carolの攻撃→Orcに、55ダメージ。', line: 1), observedAt: null)]),
+    );
     File('${dir.path}/broken.csv').writeAsStringSync('a,b\r\n1,2\r\n');
     final selector = _FakeSelector();
     FileSelectorPlatform.instance = selector;
@@ -46,7 +50,7 @@ void main() {
     final monitor = LogMonitor();
     await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
     OutlinedButton openButton() => tester.widget(
-      find.ancestor(of: find.text('CSV を開く…'), matching: find.byType(OutlinedButton)),
+      find.ancestor(of: find.text('記録を開く…'), matching: find.byType(OutlinedButton)),
     );
 
     // 監視中は開けない。
@@ -60,14 +64,14 @@ void main() {
 
     Future<void> open(String path) async {
       selector.path = path;
-      await tester.tap(find.text('CSV を開く…'));
+      await tester.tap(find.text('記録を開く…'));
       await tester.pump();
       // compute（別の isolate）の完了を実時間で待つ。
       for (var i = 0; i < 50; i++) {
         await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
         await tester.pump();
         if (find.textContaining('開けません').evaluate().isNotEmpty ||
-            find.text('CSV を閉じる').evaluate().isNotEmpty) {
+            find.text('記録を閉じる').evaluate().isNotEmpty) {
           break;
         }
       }
@@ -77,25 +81,32 @@ void main() {
     await open('${dir.path}/broken.csv');
     expect(find.textContaining('開けません'), findsOneWidget);
     expect(find.text('Alice'), findsOneWidget);
-    expect(find.text('CSV を閉じる'), findsNothing);
+    expect(find.text('記録を閉じる'), findsNothing);
 
     await open(csv.path);
     expect(find.text('Bob'), findsOneWidget);
     expect(find.text('77'), findsWidgets);
     expect(find.text('Alice'), findsNothing);
-    expect(find.textContaining('CSV を表示中: rec.csv'), findsOneWidget);
+    expect(find.textContaining('記録を表示中: rec.csv'), findsOneWidget);
     await tester.tap(find.text('ログ'));
     await tester.pumpAndSettle();
     expect(find.text('Bobの攻撃→Orcに、77ダメージ。'), findsOneWidget);
     await tester.tap(find.text('集計'));
     await tester.pumpAndSettle();
 
+    // 生ログの TSV は行を解釈し直して集計する。
+    await open('${dir.path}/rec-raw.tsv');
+    expect(find.text('Carol'), findsOneWidget);
+    expect(find.text('55'), findsWidgets);
+    expect(find.text('Bob'), findsNothing);
+    expect(find.textContaining('記録を表示中: rec-raw.tsv'), findsOneWidget);
+
     // 開始すると CSV を閉じて監視の表示に戻る。
     await tester.tap(find.text('開始'));
     await tester.pump();
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('Bob'), findsNothing);
-    expect(find.text('CSV を閉じる'), findsNothing);
+    expect(find.text('記録を閉じる'), findsNothing);
     monitor.stop();
     await tester.pump(const Duration(seconds: 1));
   });
