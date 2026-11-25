@@ -103,6 +103,9 @@ String _two(int n) => n.toString().padLeft(2, '0');
 String _formatTime(DateTime t) =>
     '${t.year}-${_two(t.month)}-${_two(t.day)} ${_two(t.hour)}:${_two(t.minute)}:${_two(t.second)}';
 
+/// [_formatTime] にミリ秒を足した表記（`YYYY-MM-DD HH:MM:SS.mmm`）。生ログで使う。
+String _formatTimeMs(DateTime t) => '${_formatTime(t)}.${t.millisecond.toString().padLeft(3, '0')}';
+
 /// CSV の見出し行（BOM 付き）。BOM は Excel で文字化けさせないために付ける。
 String csvHeader() => '\uFEFF${exportColumns.join(',')}\r\n';
 
@@ -129,7 +132,7 @@ String _csvCell(Object? v) {
   return s;
 }
 
-/// 生ログの列。`time` は検知した時刻（開始前から残っていた行は空欄）。
+/// 生ログの列。`time` は検知した時刻をミリ秒まで（開始前から残っていた行は空欄）。
 /// `log_window`・`log_line` は CSV の同名の列と同じ値で、この 2 列で CSV の行と突き合わせられる。
 /// `msg` はメッセージの番号（10 進）。`f0`〜`f20` はログの行の 16 進フィールドをそのまま
 /// （`f4` が `msg`、`f5` が `log_line` の 16 進）。
@@ -152,7 +155,7 @@ String rawLogRows(List<({LogLine line, DateTime? observedAt})> lines) {
     sb
       ..write(
         [
-          observedAt == null ? '' : _formatTime(observedAt),
+          observedAt == null ? '' : _formatTimeMs(observedAt),
           line.window,
           line.lineNo,
           line.messageId,

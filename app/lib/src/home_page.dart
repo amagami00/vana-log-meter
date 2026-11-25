@@ -69,12 +69,12 @@ class _HomePageState extends State<HomePage> {
     return (summary: s.summary, roster: s.roster, names: s.names, lines: s.combatLines);
   }
 
-  /// 記録した CSV を開いて集計を出す。監視中は開けない。
+  /// 記録した CSV か生ログの TSV を開いて集計を出す。監視中は開けない。
   /// 複数のファイルは合算しない（開始のたびに残っている行を書き直すため、合算すると二重に数える）。
   Future<void> _openCsv() async {
     final file = await openFile(
       acceptedTypeGroups: const [
-        XTypeGroup(label: 'CSV', extensions: ['csv']),
+        XTypeGroup(label: '記録（CSV・生ログの TSV）', extensions: ['csv', 'tsv']),
       ],
       initialDirectory: _s.outputDir,
       confirmButtonText: '開く',
@@ -218,7 +218,7 @@ class _HomePageState extends State<HomePage> {
     final total = summaries.fold<int>(0, (a, s) => a + s.damage);
     final folderProblem = _folderProblem();
     final emptyMessage = _loaded != null
-        ? 'この CSV に集計できる戦闘はありません'
+        ? 'この記録に集計できる戦闘はありません'
         : view == null
         ? 'ログのフォルダを選んで開始してください'
         : 'まだ戦闘の記録がありません';
@@ -277,18 +277,18 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                       Tooltip(
-                        message: '記録した CSV を開いて集計を見る。停止中だけ使える',
+                        message: '記録した CSV か生ログの TSV を開いて集計を見る。停止中だけ使える',
                         child: OutlinedButton.icon(
                           onPressed: _m.running ? null : _openCsv,
                           icon: const Icon(Icons.file_open_outlined),
-                          label: const Text('CSV を開く…'),
+                          label: const Text('記録を開く…'),
                         ),
                       ),
                       if (_loaded != null)
                         TextButton.icon(
                           onPressed: _closeCsv,
                           icon: const Icon(Icons.close),
-                          label: const Text('CSV を閉じる'),
+                          label: const Text('記録を閉じる'),
                         ),
                     ],
                   ),
@@ -465,11 +465,19 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// [path] の CSV を読んで集計する（別の isolate で動かす）。読めなければ [FormatException] を投げる。
+/// [path] の CSV か生ログの TSV を読んで集計する（別の isolate で動かす）。
+/// どちらかは拡張子でなく見出し行で決める。読めなければ [FormatException] を投げる。
 RecordedLog _loadCsv(String path) {
   final log = RecordedLog();
   try {
-    log.addCsv(File(path).readAsStringSync(), source: File(path).uri.pathSegments.last);
+    final content = File(path).readAsStringSync();
+    final source = File(path).uri.pathSegments.last;
+    final header = content.split('\n').first;
+    if (header.contains('\t')) {
+      log.addRawTsv(content, source: source);
+    } else {
+      log.addCsv(content, source: source);
+    }
   } on FileSystemException catch (e) {
     throw FormatException(e.message);
   }
@@ -654,7 +662,7 @@ class _StatusBar extends StatelessWidget {
     final s = monitor.session;
     final l = loaded;
     final parts = l != null
-        ? ['CSV を表示中: ${l.sources.join('、')}', '事実 ${l.eventCount} 件']
+        ? ['記録を表示中: ${l.sources.join('、')}', '事実 ${l.eventCount} 件']
         : <String>[
             monitor.running ? '監視中' : '停止中',
             if (s != null) ...[

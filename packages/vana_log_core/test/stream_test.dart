@@ -154,11 +154,11 @@ void main() {
       write(0, [l(1, 'Aliceの攻撃→Goblinに、10ダメージ。')]);
       r.add(s.poll(), lines: s.lastCombatLines);
       write(0, [l(1, 'Aliceの攻撃→Goblinに、10ダメージ。'), l(2, 'Aliceの攻撃→Goblinに、11ダメージ。')]);
-      now = DateTime(2026, 11, 19, 12, 0, 5);
+      now = DateTime(2026, 11, 19, 12, 0, 5, 42);
       r.add(s.poll(), lines: s.lastCombatLines);
       final rows = rawRows(r);
       expect(rows, hasLength(2));
-      expect(rows.last.first, '2026-11-19 12:00:05');
+      expect(rows.last.first, '2026-11-19 12:00:05.042');
       expect(
         r.linesFile.readAsStringSync().split('\r\n').where((x) => x.contains('\ttext')),
         hasLength(1),
