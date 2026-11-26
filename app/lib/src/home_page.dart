@@ -603,7 +603,9 @@ class _SummaryTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final total = summaries.fold<int>(0, (a, s) => a + s.damage);
-    DataCell num(String s) => DataCell(Text(s));
+    // 数字の幅を揃え、桁が縦に並ぶようにする。
+    const numStyle = TextStyle(fontFeatures: [FontFeature.tabularFigures()]);
+    DataCell num(String s) => DataCell(Text(s, style: numStyle));
     return SingleChildScrollView(
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
