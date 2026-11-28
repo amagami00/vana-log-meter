@@ -103,6 +103,7 @@ final _castStart = RegExp(r'^(.+?)は、(.+?)に(.+)を唱えた。$');
 final _ready = RegExp(r'^(.+?)は、(.+)の構え。$');
 final _defeat = RegExp(r'^(.+?)は、(.+)を倒した。$');
 final _directHeal = RegExp(r'^(.+?)の(.+)→(.+)のHPが、(\d+)回復。$');
+
 /// 範囲攻撃の矢印の行のモードを、向きで分ける（実ログで観察した値）。
 /// 味方→敵、敵→味方（同盟を含む）、回復の 3 組。どれでもなければ null。
 String? _modeGroup(int mode) => switch (mode) {
