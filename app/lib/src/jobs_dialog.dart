@@ -42,7 +42,7 @@ class _JobsDialogState extends State<JobsDialog> {
             : ListView(
                 shrinkWrap: true,
                 children: [
-                  const Text('「名前を隠す」をオンにすると、入力したジョブ表記と番号で表示・書き出しします。'),
+                  const Text('「名前を隠す」をオンにすると、入力したジョブ表記と番号で画面に表示します（CSV は名前のまま）。'),
                   const SizedBox(height: 12),
                   for (final e in _c.entries)
                     Padding(

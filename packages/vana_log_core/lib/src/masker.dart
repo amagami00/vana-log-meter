@@ -1,7 +1,6 @@
-import 'combat.dart';
 import 'roster.dart';
 
-/// プレイヤー名をジョブ表記（「戦/侍 #1」）か連番（「PC #1」）に置き換える。
+/// 画面に出すプレイヤー名をジョブ表記（「戦/侍 #1」）か連番（「PC #1」）に置き換える。
 ///
 /// 安全側に倒し、敵と判定できなかった名前はすべて置き換える（殴らない味方は
 /// 味方の名簿に入らないことがあるため）。番号は初めて見た順に付ける。
@@ -14,28 +13,11 @@ class NameMasker {
   final Map<String, String> _labels = {};
   final Map<String, int> _counters = {};
 
-  /// [roster] で敵でない名前を、[events] の登場順に登録する。
-  void learn(Iterable<CombatEvent> events, Roster roster) {
-    for (final e in events) {
-      for (final n in [e.actor, e.target]) {
-        if (n.isNotEmpty && !roster.isEnemy(n)) _label(n);
-      }
-    }
-  }
-
   /// [names]（初めて見た順）のうち、[roster] で敵でない名前を登録する。
   void learnNames(Iterable<String> names, Roster roster) {
     for (final n in names) {
       if (n.isNotEmpty && !roster.isEnemy(n)) _label(n);
     }
-  }
-
-  /// 登録した名前のうち、後から [roster] で敵と分かったものを外す（以後は名前のまま出す）。
-  /// 他の名前の番号は変えない。
-  void forgetEnemies(Roster roster) {
-    final before = _labels.length;
-    _labels.removeWhere((n, _) => roster.isEnemy(n));
-    if (_labels.length != before) _re = null;
   }
 
   /// 置き換える名前（登録済みのもの）。
@@ -63,15 +45,4 @@ class NameMasker {
   }
 
   RegExp? _re;
-
-  /// [toRows] の出力の名前を置き換えた新しい行を返す。
-  List<Map<String, Object?>> maskRows(List<Map<String, Object?>> rows) => [
-    for (final r in rows)
-      {
-        ...r,
-        for (final c in const ['ally', 'enemy', 'actor_name', 'target_name'])
-          if (r[c] is String) c: display(r[c]! as String),
-        if (r['text'] is String) 'text': maskText(r['text']! as String),
-      },
-  ];
 }
