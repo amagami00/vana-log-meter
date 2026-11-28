@@ -20,8 +20,17 @@ void main() {
     final settings = await Settings.load();
     final monitor = LogMonitor();
     await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
-    expect(find.text('ログのフォルダを選んで開始してください'), findsOneWidget);
+    expect(find.text('「設定」タブでログのフォルダを選び、開始してください'), findsOneWidget);
     expect(find.text('開始'), findsOneWidget);
+    expect(find.text('出力先'), findsNothing);
+
+    // フォルダの選択と過去のログを読むかは「設定」タブにまとめる。
+    await tester.tap(find.text('設定'));
+    await tester.pumpAndSettle();
+    expect(find.text('ログのフォルダ'), findsOneWidget);
+    expect(find.text('開始時に過去のログも読む'), findsOneWidget);
+    expect(find.text('出力先'), findsOneWidget);
+    expect(find.text('CSV に記録する'), findsOneWidget);
     monitor.dispose();
   });
 
@@ -201,6 +210,31 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
+  testWidgets('年月日のフォルダに分ける設定なら、出力先の下の YYYYMMDD に書く', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('vana_log_date_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/1_0.log').writeAsBytesSync(
+      logFile([lineBytes((mode: 0x14, msg: 1, line: 1, body: sjis('Aliceの攻撃→Goblinに、120ダメージ。')))]),
+    );
+    SharedPreferences.setMockInitialValues({});
+    final settings = await Settings.load();
+    expect(settings.dateFolder, isFalse);
+    settings
+      ..inputDir = dir.path
+      ..outputDir = '${dir.path}/out'
+      ..dateFolder = true;
+    final monitor = LogMonitor();
+    await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
+    await tester.tap(find.text('開始'));
+    await tester.pump();
+    final r = monitor.recorder!;
+    final day = r.stamp.substring(0, 8); // ファイル名の日時と同じ日付
+    expect(r.file.parent.path, '${dir.path}/out${Platform.pathSeparator}$day');
+    expect(r.file.existsSync(), isTrue);
+    monitor.stop();
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   testWidgets('書けなかった行は、停止や区切りの後も書けるまで書き直す', (tester) async {
     final dir = Directory.systemTemp.createTempSync('vana_log_drain_');
     addTearDown(() => dir.deleteSync(recursive: true));
@@ -286,7 +320,7 @@ void main() {
     settings.inputDir = '${dir.path}/gone';
     final monitor = LogMonitor();
     await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
-    expect(find.text('フォルダが見つかりません。選び直してください'), findsOneWidget);
+    expect(find.text('ログのフォルダ: フォルダが見つかりません。選び直してください'), findsOneWidget);
     await tester.tap(find.text('開始'));
     await tester.pump();
     expect(monitor.running, isFalse);

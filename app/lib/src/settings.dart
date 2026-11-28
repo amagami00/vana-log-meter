@@ -31,6 +31,10 @@ class Settings {
   bool get exportCsv => _prefs.getBool('exportCsv') ?? true;
   set exportCsv(bool v) => _prefs.setBool('exportCsv', v);
 
+  /// 出力先の下に年月日（YYYYMMDD）のフォルダを作り、その中に書く。
+  bool get dateFolder => _prefs.getBool('dateFolder') ?? false;
+  set dateFolder(bool v) => _prefs.setBool('dateFolder', v);
+
   /// 名前 → ジョブ表記（「戦/侍」など）。
   Map<String, String> get jobs {
     final s = _prefs.getString('jobs');
