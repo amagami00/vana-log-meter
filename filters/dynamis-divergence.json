@@ -1,0 +1,18 @@
+[
+  {
+    "name": "ダイバージェンス サンドリア ボス",
+    "enemies": ["Overseer's Tombstone", "Halphas", "Disjoined Elvaan"]
+  },
+  {
+    "name": "ダイバージェンス バストゥーク ボス",
+    "enemies": ["Mu'Sha Effigy", "Ka'Rho Fearsinger", "Disjoined Galka"]
+  },
+  {
+    "name": "ダイバージェンス ウィンダス ボス",
+    "enemies": ["Evincing Idol", "Fii Pexu the Eternal", "Disjoined Tarutaru"]
+  },
+  {
+    "name": "ダイバージェンス ジュノ ボス",
+    "enemies": ["Impish Golem", "Obstatrix", "Disjoined Mithra"]
+  }
+]
