@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'combat.dart';
 import 'log_file.dart';
-import 'masker.dart';
 import 'roster.dart';
 import 'session.dart';
 
@@ -171,19 +170,18 @@ String rawLogRows(List<({LogLine line, DateTime? observedAt})> lines) {
 /// 監視中に取り出した事実を、読み込みのたびに CSV ファイルへ追記する。
 ///
 /// 戦闘の行そのもの（1+2 をまとめて読むときは重複を除いた行）も、種類の部分が `raw` の
-/// `.tsv`（[rawLogColumns]）へ追記する。こちらは [masker] に関係なく名前を置き換えない。
+/// `.tsv`（[rawLogColumns]）へ追記する。
 ///
 /// ファイルは最初に書く行が来たときに作る（`vanalog-YYYYMMDD-HHMMSS-events.csv` と
 /// `vanalog-YYYYMMDD-HHMMSS-raw.tsv`）。
 /// 書けなかった行（Excel で開いていてロックされているなど）は手元に残し、次の [add] で書き直す。
-/// [masker] を渡すと、名前を置き換えてから書く。番号は初めて見た順に付け、書いた後は変えない。
+/// 名前は置き換えずに書く。
 class CsvRecorder {
-  CsvRecorder({required this.directory, required this.session, this.masker, DateTime? now})
+  CsvRecorder({required this.directory, required this.session, DateTime? now})
     : stamp = _stamp(now ?? DateTime.now());
 
   final Directory directory;
   final LogSession session;
-  final NameMasker? masker;
 
   /// `session` 列の値とファイル名に使う日時。
   final String stamp;
@@ -220,19 +218,9 @@ class CsvRecorder {
   }) {
     _pendingLines.addAll(lines);
     if (events.isNotEmpty) {
-      var rows = toRows(
-        events,
-        session: stamp,
-        roster: session.roster,
-        startedAt: session.startedAt,
+      _pending.addAll(
+        toRows(events, session: stamp, roster: session.roster, startedAt: session.startedAt),
       );
-      final m = masker;
-      if (m != null) {
-        m.forgetEnemies(session.roster);
-        m.learn(events, session.roster);
-        rows = m.maskRows(rows);
-      }
-      _pending.addAll(rows);
     }
     if (_pending.isEmpty && _pendingLines.isEmpty) return;
     Object? failed;

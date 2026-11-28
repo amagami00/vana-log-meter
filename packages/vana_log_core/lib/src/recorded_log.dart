@@ -36,7 +36,7 @@ const _requiredColumns = [
 
 final _maskedLabel = RegExp(r' #\d+$');
 
-/// `NameMasker` が付けた表記（「戦/侍 #1」「PC #1」）なら true。
+/// 名前を置き換えた表記（「戦/侍 #1」「PC #1」）なら true。以前の版は CSV にもこの表記で書いていた。
 /// ゲームのキャラクター名には空白が入らないため、本物の名前とは重ならない。
 bool isMaskedLabel(String name) => _maskedLabel.hasMatch(name);
 

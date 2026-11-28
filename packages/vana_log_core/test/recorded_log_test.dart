@@ -5,15 +5,13 @@ import 'helpers.dart';
 
 /// 監視中の流れ（読み込みごとに名簿→集計→CSV 行）を再現し、集計と CSV を返す。
 /// 1 回目の読み込みは時刻なし、2 回目以降は [times] の時刻を付ける。
-({SummaryAccumulator live, String csv, NameMasker? masker}) record(
+({SummaryAccumulator live, String csv}) record(
   List<List<(String, int, int)>> batches,
-  List<DateTime?> times, {
-  bool mask = false,
-}) {
+  List<DateTime?> times,
+) {
   final p = CombatParser();
   final roster = Roster();
   final live = SummaryAccumulator();
-  final masker = mask ? NameMasker(jobs: {'Alice': '戦/侍'}) : null;
   final startedAt = DateTime(2026, 11, 20, 12);
   final rows = <Map<String, Object?>>[];
   var n = 0;
@@ -27,16 +25,9 @@ import 'helpers.dart';
     ];
     roster.addAll(added);
     live.add(added, roster);
-    var r = toRows(added, session: 's1', roster: roster, startedAt: startedAt);
-    if (masker != null) {
-      masker
-        ..forgetEnemies(roster)
-        ..learn(added, roster);
-      r = masker.maskRows(r);
-    }
-    rows.addAll(r);
+    rows.addAll(toRows(added, session: 's1', roster: roster, startedAt: startedAt));
   }
-  return (live: live, csv: toCsv(rows), masker: masker);
+  return (live: live, csv: toCsv(rows));
 }
 
 List<String> describe(List<ActorSummary> list, [String Function(String)? display]) => [
@@ -135,10 +126,15 @@ void main() {
     expect(log.combatLines.first.line.lineNo, 1);
   });
 
-  test('名前を隠した CSV も同じ集計になり、表記はそのまま読む', () {
-    final rec = record(batches, times, mask: true);
-    final log = RecordedLog()..addCsv(rec.csv, source: 'a.csv');
-    expect(describe(log.summary.summaries()), describe(rec.live.summaries(), rec.masker!.display));
+  test('以前の版で名前を隠した CSV も同じ集計になり、表記はそのまま読む', () {
+    final rec = record(batches, times);
+    const labels = {'Alice': '戦/侍 #1', 'Bob': 'PC #1'};
+    final masked = labels.entries.fold(rec.csv, (csv, e) => csv.replaceAll(e.key, e.value));
+    final log = RecordedLog()..addCsv(masked, source: 'a.csv');
+    expect(
+      describe(log.summary.summaries()),
+      describe(rec.live.summaries(), (n) => labels[n] ?? n),
+    );
     expect(log.names, containsAll(['戦/侍 #1', 'PC #1', 'Goblin']));
     expect(log.names.where(isMaskedLabel), containsAll(['戦/侍 #1', 'PC #1']));
     expect(isMaskedLabel('Goblin'), isFalse);

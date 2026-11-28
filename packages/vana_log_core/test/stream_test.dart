@@ -23,9 +23,9 @@ void main() {
   });
   tearDown(() => dir.deleteSync(recursive: true));
 
-  test('読み込みのたびに追記し、見出しは 1 回だけ。名前を隠すと味方の名前が残らない', () {
+  test('読み込みのたびに追記し、見出しは 1 回だけ。名前は置き換えない', () {
     final s = LogSession(directory: dir, clock: () => now);
-    final r = CsvRecorder(directory: out, session: s, masker: NameMasker(), now: now);
+    final r = CsvRecorder(directory: out, session: s, now: now);
     write(0, [l(1, 'Aliceの攻撃→Goblinに、10ダメージ。')]);
     r.add(s.poll());
     write(0, [l(1, 'Aliceの攻撃→Goblinに、10ダメージ。'), l(2, 'Bobの攻撃→Goblinに、20ダメージ。', mode: 0x19)]);
@@ -38,9 +38,8 @@ void main() {
     expect(lines.where((x) => x.contains('session,')), hasLength(1));
     expect(r.written, 2);
     final text = r.file.readAsStringSync();
-    expect(text, isNot(contains('Alice')));
-    expect(text, isNot(contains('Bob')));
-    expect(text, contains('PC #1'));
+    expect(text, contains('Alice'));
+    expect(text, contains('Bob'));
     expect(text, contains('Goblin'));
   });
 
@@ -90,25 +89,6 @@ void main() {
     expect(s.summary.enemies().first.name, 'Orc');
   });
 
-  test('名前を隠すとき、後から敵と分かった名前はその後の行で名前のまま出す', () {
-    final s = LogSession(directory: dir, clock: () => now);
-    final r = CsvRecorder(directory: out, session: s, masker: NameMasker(), now: now);
-    // 自分への回復だけでは Orc が敵か分からず、隠す側に倒す。
-    final first = [
-      l(1, 'Aliceの攻撃→Goblinに、10ダメージ。'),
-      l(2, 'OrcのBar→OrcのHPが、50回復。', mode: 0x19),
-      l(3, 'Aliceの攻撃→Goblinに、10ダメージ。'),
-    ];
-    write(0, first);
-    r.add(s.poll());
-    expect(r.file.readAsStringSync(), isNot(contains('Orc')));
-    write(0, [...first, l(4, 'Aliceの攻撃→Orcに、20ダメージ。')]);
-    r.add(s.poll());
-    final last = r.file.readAsStringSync().trim().split('\r\n').last;
-    expect(last, contains('Orc'));
-    expect(last, isNot(contains('Alice')));
-  });
-
   group('戦闘の行そのものを書く', () {
     List<List<String>> rawRows(CsvRecorder r) => [
       for (final x in r.linesFile.readAsStringSync().split('\r\n').skip(1))
@@ -116,10 +96,10 @@ void main() {
     ];
     final textAt = rawLogColumns.indexOf('text');
 
-    test('1+2 は重複を除いて戦闘の行だけを書き、名前を隠す設定でも名前のまま', () {
+    test('1+2 は重複を除いて戦闘の行だけを書く', () {
       now = DateTime(2026, 11, 19, 12);
       final s = LogSession(directory: dir, window: bothWindows, clock: () => now);
-      final r = CsvRecorder(directory: out, session: s, masker: NameMasker(), now: now);
+      final r = CsvRecorder(directory: out, session: s, now: now);
       List<int> m(int line, int msg, String text, {int mode = 0x14}) =>
           lineBytes((mode: mode, msg: msg, line: line, body: sjis(text)));
       File('${dir.path}/1_0.log').writeAsBytesSync(
@@ -147,7 +127,7 @@ void main() {
       expect(csv.map((x) => (x.split(',')[w], x.split(',')[ln])), [('1', '1'), ('2', '8')]);
       expect(rows.first.first, isEmpty, reason: '開始前から残っていた行は時刻が空欄');
       expect(r.linesWritten, 2);
-      expect(r.file.readAsStringSync(), isNot(contains('Alice')));
+      expect(r.file.readAsStringSync(), contains('Alice'));
     });
 
     test('監視中に読んだ行は検知時刻を付けて追記する', () {

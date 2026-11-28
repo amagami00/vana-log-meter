@@ -163,25 +163,16 @@ void main() {
   });
 
   test('ジョブ表記と連番で置き換え、敵の名前は残す', () {
-    final m = NameMasker(jobs: {'Bob': '暗/侍'})..learn(events, roster);
+    final m = NameMasker(jobs: {'Bob': '暗/侍'})
+      ..learnNames(events.expand((e) => [e.actor, e.target]), roster);
     expect(m.display('Alice'), 'PC #1');
     expect(m.display('Bob'), '暗/侍 #1');
     expect(m.display('Carol'), 'PC #2');
     expect(m.display('Goblin'), 'Goblin');
   });
 
-  test('書き出す行に元の名前が残らない', () {
-    final m = NameMasker()..learn(events, roster);
-    final rows = m.maskRows(toRows(events, session: 's', roster: roster));
-    final out = toCsv(rows);
-    for (final n in ['Alice', 'Bob', 'Carol']) {
-      expect(out.contains(n), isFalse, reason: n);
-    }
-    expect(out, contains('Goblin'));
-  });
-
   test('本文の置き換えは英字の途中を変えない', () {
-    final m = NameMasker()..learn(feed([('Alの攻撃→Goblinに、1ダメージ。', 0x14, 1)]), roster);
+    final m = NameMasker()..learnNames(['Al'], roster);
     expect(m.maskText('Alの攻撃→Alexに'), 'PC #1の攻撃→Alexに');
   });
 
