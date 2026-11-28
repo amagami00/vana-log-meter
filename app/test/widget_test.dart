@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show Scrollable;
 import 'package:material_ui/material_ui.dart'
-    show CheckboxMenuButton, OutlinedButton, Switch, SwitchListTile, TextField;
+    show CheckboxMenuButton, ListView, OutlinedButton, Switch, SwitchListTile, TextField;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vana_log_core/vana_log_core.dart';
@@ -20,8 +20,17 @@ void main() {
     final settings = await Settings.load();
     final monitor = LogMonitor();
     await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
-    expect(find.text('ログのフォルダを選んで開始してください'), findsOneWidget);
+    expect(find.text('「設定」タブでログのフォルダを選び、開始してください'), findsOneWidget);
     expect(find.text('開始'), findsOneWidget);
+    expect(find.text('出力先'), findsNothing);
+
+    // フォルダの選択と過去のログを読むかは「設定」タブにまとめる。
+    await tester.tap(find.text('設定'));
+    await tester.pumpAndSettle();
+    expect(find.text('ログのフォルダ'), findsOneWidget);
+    expect(find.text('開始時に過去のログも読む'), findsOneWidget);
+    expect(find.text('出力先'), findsOneWidget);
+    expect(find.text('CSV に記録する'), findsOneWidget);
     monitor.dispose();
   });
 
@@ -192,11 +201,77 @@ void main() {
     expect(r.written, 1);
     expect(find.textContaining('記録中: vanalog-'), findsOneWidget);
     final csv = r.file.readAsStringSync();
-    expect(csv, contains('PC #1'));
-    expect(csv, isNot(contains('Alice')));
+    // 名前を隠すのは画面だけ。CSV は実名で書く。
+    expect(csv, contains('Alice'));
+    expect(csv, isNot(contains('PC #1')));
+    expect(find.text('PC #1'), findsOneWidget);
     await tester.tap(find.text('ファイルを区切る'));
     await tester.pump();
     expect(monitor.recorder, isNull);
+    monitor.stop();
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('監視中は設定タブの項目を変えられない', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('vana_log_lock_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/1_0.log').writeAsBytesSync(logFile([]));
+    SharedPreferences.setMockInitialValues({});
+    final settings = await Settings.load();
+    settings.inputDir = dir.path;
+    final monitor = LogMonitor();
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
+    await tester.tap(find.text('設定'));
+    await tester.pumpAndSettle();
+    // 上の欄（名前を隠すなど）は対象外。設定タブの中だけを見る。
+    Finder inTab(Finder f) => find.descendant(of: find.byType(ListView), matching: f);
+    bool enabled(bool on) =>
+        tester
+            .widgetList<Switch>(inTab(find.byType(Switch)))
+            .every((s) => (s.onChanged != null) == on) &&
+        tester
+            .widgetList<OutlinedButton>(inTab(find.byType(OutlinedButton)))
+            .every((b) => (b.onPressed != null) == on);
+    bool allEnabled() => enabled(true);
+    bool allDisabled() => enabled(false);
+    expect(tester.widgetList(inTab(find.byType(Switch))).length, 3);
+    expect(allEnabled(), isTrue);
+
+    await tester.tap(find.text('開始'));
+    await tester.pump();
+    expect(find.text('監視中は変更できません。停止してから変更してください'), findsOneWidget);
+    expect(allDisabled(), isTrue);
+
+    await tester.tap(find.text('停止'));
+    await tester.pump();
+    expect(allEnabled(), isTrue);
+    await tester.pump(const Duration(seconds: 1));
+    monitor.dispose();
+  });
+
+  testWidgets('年月日のフォルダに分ける設定なら、出力先の下の YYYYMMDD に書く', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('vana_log_date_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/1_0.log').writeAsBytesSync(
+      logFile([lineBytes((mode: 0x14, msg: 1, line: 1, body: sjis('Aliceの攻撃→Goblinに、120ダメージ。')))]),
+    );
+    SharedPreferences.setMockInitialValues({});
+    final settings = await Settings.load();
+    expect(settings.dateFolder, isFalse);
+    settings
+      ..inputDir = dir.path
+      ..outputDir = '${dir.path}/out'
+      ..dateFolder = true;
+    final monitor = LogMonitor();
+    await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
+    await tester.tap(find.text('開始'));
+    await tester.pump();
+    final r = monitor.recorder!;
+    final day = r.stamp.substring(0, 8); // ファイル名の日時と同じ日付
+    expect(r.file.parent.path, '${dir.path}/out${Platform.pathSeparator}$day');
+    expect(r.file.existsSync(), isTrue);
     monitor.stop();
     await tester.pump(const Duration(seconds: 1));
   });
@@ -286,7 +361,7 @@ void main() {
     settings.inputDir = '${dir.path}/gone';
     final monitor = LogMonitor();
     await tester.pumpWidget(VanaLogMeterApp(settings: settings, monitor: monitor));
-    expect(find.text('フォルダが見つかりません。選び直してください'), findsOneWidget);
+    expect(find.text('ログのフォルダ: フォルダが見つかりません。選び直してください'), findsOneWidget);
     await tester.tap(find.text('開始'));
     await tester.pump();
     expect(monitor.running, isFalse);

@@ -119,16 +119,14 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _pickInput() async {
     final dir = await getDirectoryPath(initialDirectory: _s.inputDir, confirmButtonText: '選択');
-    if (dir == null) return;
+    if (dir == null || _m.running) return;
     setState(() => _s.inputDir = dir);
-    if (_m.running) _m.start(dir, includePast: _s.includePast);
   }
 
   Future<void> _pickOutput() async {
     final dir = await getDirectoryPath(initialDirectory: _s.outputDir, confirmButtonText: '選択');
-    if (dir == null) return;
+    if (dir == null || _m.running) return;
     setState(() => _s.outputDir = dir);
-    _m.cut();
   }
 
   void _toggle() {
@@ -181,14 +179,14 @@ class _HomePageState extends State<HomePage> {
   CsvRecorder? _newRecorder(LogSession session, DateTime startedAt) {
     final out = _s.outputDir;
     if (!_s.exportCsv || out == null) return null;
+    // 日付はファイルを区切った時刻で決める（ファイル名の日時と揃える）。日をまたいでも移らない。
+    final d = startedAt;
+    final day = '${d.year}${'${d.month}'.padLeft(2, '0')}${'${d.day}'.padLeft(2, '0')}';
     return CsvRecorder(
-      directory: Directory(out),
+      directory: Directory(_s.dateFolder ? '$out${Platform.pathSeparator}$day' : out),
       session: session,
+      // 名前を隠すのは画面だけ。CSV は実名で書く。
       now: startedAt,
-      // 画面と同じ番号になるよう、それまでに見た名前を先に登録する。
-      masker: _s.anonymize
-          ? (NameMasker(jobs: _s.jobs)..learnNames(session.names, session.roster))
-          : null,
     );
   }
 
@@ -213,11 +211,7 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (_) => JobsDialog(names: names, jobs: _s.jobs),
     );
-    if (result != null) {
-      setState(() => _s.jobs = result);
-      // 書いた行の表記は変えられないので、ここからは新しいファイルにする。
-      if (_s.anonymize) _m.cut();
-    }
+    if (result != null) setState(() => _s.jobs = result);
   }
 
   @override
@@ -242,14 +236,15 @@ class _HomePageState extends State<HomePage> {
     final selected = summaries.where((s) => s.name == _selected).firstOrNull;
     final total = summaries.fold<int>(0, (a, s) => a + s.damage);
     final folderProblem = _folderProblem();
+    final locked = _m.running;
     final emptyMessage = _loaded != null
         ? 'この記録に集計できる戦闘はありません'
         : view == null
-        ? 'ログのフォルダを選んで開始してください'
+        ? '「設定」タブでログのフォルダを選び、開始してください'
         : 'まだ戦闘の記録がありません';
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(title: const Text('vana-log-meter')),
         body: Column(
@@ -260,14 +255,6 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _DirRow(label: 'ログのフォルダ', path: _s.inputDir, onPick: _pickInput),
-                  if (folderProblem != null)
-                    Text(
-                      folderProblem.message,
-                      style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: Theme.of(context).colorScheme.error),
-                    ),
-                  const SizedBox(height: 8),
                   Wrap(
                     spacing: 12,
                     runSpacing: 8,
@@ -291,16 +278,6 @@ class _HomePageState extends State<HomePage> {
                           label: const Text('ここから集計'),
                         ),
                       ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Switch(
-                            value: _s.includePast,
-                            onChanged: (v) => setState(() => _s.includePast = v),
-                          ),
-                          const Text('開始時に過去のログも読む'),
-                        ],
-                      ),
                       Tooltip(
                         message: '記録した CSV か生ログの TSV を開いて集計を見る。停止中だけ使える',
                         child: OutlinedButton.icon(
@@ -317,32 +294,22 @@ class _HomePageState extends State<HomePage> {
                         ),
                     ],
                   ),
-                  const Divider(height: 24),
-                  _DirRow(
-                    label: '出力先',
-                    hint: 'CSV を記録するフォルダを選んでください',
-                    path: _s.outputDir,
-                    onPick: _pickOutput,
-                  ),
+                  // フォルダは「設定」タブで選ぶが、開始できない理由はどのタブでも見えるようにする。
+                  if (folderProblem != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'ログのフォルダ: ${folderProblem.message}',
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: Theme.of(context).colorScheme.error),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 12,
                     runSpacing: 8,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Switch(
-                            value: _s.exportCsv,
-                            onChanged: (v) {
-                              setState(() => _s.exportCsv = v);
-                              _m.cut();
-                            },
-                          ),
-                          const Text('CSV に記録する'),
-                        ],
-                      ),
                       Tooltip(
                         message: 'いまの CSV を閉じ、この後の行は新しいファイルに書く',
                         child: OutlinedButton.icon(
@@ -352,18 +319,19 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Switch(
-                            value: _s.anonymize,
-                            onChanged: (v) {
-                              setState(() => _s.anonymize = v);
-                              _m.cut();
-                            },
-                          ),
-                          const Text('名前を隠す'),
-                        ],
+                      // 画面の表示だけを切り替える（CSV は実名のまま）ので、監視中も使える。
+                      Tooltip(
+                        message: '画面の名前だけをジョブ表記に置き換える。CSV は名前のまま書く',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Switch(
+                              value: _s.anonymize,
+                              onChanged: (v) => setState(() => _s.anonymize = v),
+                            ),
+                            const Text('名前を隠す'),
+                          ],
+                        ),
                       ),
                       TextButton.icon(
                         onPressed: _editJobs,
@@ -383,6 +351,7 @@ class _HomePageState extends State<HomePage> {
                 Tab(text: '集計'),
                 Tab(text: 'ログ'),
                 Tab(text: 'フィルタ'),
+                Tab(text: '設定'),
               ],
             ),
             Expanded(
@@ -512,6 +481,63 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ],
                   ),
+                  ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    children: [
+                      // 監視中に変えると 1 回の記録が複数のファイルに分かれるため、停止中だけ変えられる。
+                      if (locked)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            '監視中は変更できません。停止してから変更してください',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: Theme.of(context).colorScheme.error),
+                          ),
+                        ),
+                      // フォルダの問題は、どのタブでも見える上の欄に出す。
+                      _DirRow(
+                        label: 'ログのフォルダ',
+                        path: _s.inputDir,
+                        onPick: locked ? null : _pickInput,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Switch(
+                            value: _s.includePast,
+                            onChanged: locked ? null : (v) => setState(() => _s.includePast = v),
+                          ),
+                          const Text('開始時に過去のログも読む'),
+                        ],
+                      ),
+                      const Divider(height: 24),
+                      _DirRow(
+                        label: '出力先',
+                        hint: 'CSV を記録するフォルダを選んでください',
+                        path: _s.outputDir,
+                        onPick: locked ? null : _pickOutput,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Switch(
+                            value: _s.exportCsv,
+                            onChanged: locked ? null : (v) => setState(() => _s.exportCsv = v),
+                          ),
+                          const Text('CSV に記録する'),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Switch(
+                            value: _s.dateFolder,
+                            onChanged: locked ? null : (v) => setState(() => _s.dateFolder = v),
+                          ),
+                          const Text('年月日（YYYYMMDD）のフォルダに分ける'),
+                        ],
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -556,7 +582,9 @@ class _DirRow extends StatelessWidget {
   final String label;
   final String hint;
   final String? path;
-  final VoidCallback onPick;
+
+  /// null ならボタンを押せない。
+  final VoidCallback? onPick;
 
   @override
   Widget build(BuildContext context) {
