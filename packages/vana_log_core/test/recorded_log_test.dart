@@ -67,7 +67,7 @@ void main() {
   final batches = [
     [
       ('Aliceの攻撃→Goblinに、100ダメージ。', 0x14, 1),
-      // Bob はまだ味方と分からないので、この WS は集計に入らない（記録時の判定）。
+      // パーティメンバーの行動（0x19）なので、殴る前の WS でも Bob を味方と判定する。
       ('Bobは、Fooを実行。', 0x19, 2),
       ('→Goblinに、500ダメージ。', 0x19, 2),
     ],
@@ -96,8 +96,8 @@ void main() {
     expect(log.summary.timeOf(), rec.live.timeOf());
     expect(log.summary.timeOf(), const Duration(milliseconds: 4500));
     expect(log.eventCount, rec.live.count);
-    // 記録時に判定できなかった Bob の WS は数えない。
-    expect(log.summary.summaries().firstWhere((s) => s.name == 'Bob').damage, 50);
+    // Bob の WS（500）と通常攻撃（50）の両方を数える。
+    expect(log.summary.summaries().firstWhere((s) => s.name == 'Bob').damage, 550);
     expect(log.sources, ['a.csv']);
   });
 
