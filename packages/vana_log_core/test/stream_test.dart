@@ -93,10 +93,12 @@ void main() {
   test('名前を隠すとき、後から敵と分かった名前はその後の行で名前のまま出す', () {
     final s = LogSession(directory: dir, clock: () => now);
     final r = CsvRecorder(directory: out, session: s, masker: NameMasker(), now: now);
-    // 魔法だけでは Orc が敵か分からず、隠す側に倒す。
-    List<int> m(int line, String text) =>
-        lineBytes((mode: 0x19, msg: 2, line: line, body: sjis(text)));
-    final first = [l(1, 'Aliceの攻撃→Goblinに、10ダメージ。'), m(2, 'BobのBarが発動。'), m(3, '→Orcに、50ダメージ。')];
+    // 自分への回復だけでは Orc が敵か分からず、隠す側に倒す。
+    final first = [
+      l(1, 'Aliceの攻撃→Goblinに、10ダメージ。'),
+      l(2, 'OrcのBar→OrcのHPが、50回復。', mode: 0x19),
+      l(3, 'Aliceの攻撃→Goblinに、10ダメージ。'),
+    ];
     write(0, first);
     r.add(s.poll());
     expect(r.file.readAsStringSync(), isNot(contains('Orc')));

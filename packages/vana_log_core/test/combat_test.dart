@@ -191,6 +191,39 @@ void main() {
     expect(ev.map(r.sideOf), ['offense', 'offense', 'offense']);
   });
 
+  test('Roster は、殴らず殴られもしないパーティメンバーの後衛も、魔法や WS で味方にする', () {
+    final ev = run(CombatParser(), [
+      ('Aliceの攻撃→Goblinに、10ダメージ。', 0x14, 1),
+      ('Goblinの攻撃→Bobに、5ダメージ。', 0x20, 2),
+      ('CarolのBazが発動。', 0x19, 3),
+      ('→マジックバースト！Goblinに、1227ダメージ。', 0x19, 3),
+      ('Daveは、Fooを実行。', 0x1a, 4),
+      ('→Goblinに、300ダメージ。', 0x1a, 4),
+    ]);
+    final r = Roster()..addAll(ev);
+    expect(r.allies, containsAll(['Alice', 'Bob', 'Carol', 'Dave']));
+    expect(r.self, {'Alice'});
+    expect(r.isEnemy('Goblin'), isTrue);
+    expect(ev.map(r.sideOf), ['offense', 'defense', 'offense', 'offense']);
+
+    final s = {for (final a in summarize(ev, r)) a.name: a.damage};
+    expect(s['Carol'], 1227);
+    expect(s['Dave'], 300);
+  });
+
+  test('Roster は、パーティメンバーの行動でも、敵と分かっている名前を味方にしない', () {
+    final ev = run(CombatParser(), [
+      ('Goblinの攻撃→Aliceに、5ダメージ。', 0x20, 1),
+      ('Aliceの攻撃→Goblinに、10ダメージ。', 0x14, 2),
+      // 範囲攻撃のつなぎ違いなどで、敵が行動者になった行。
+      ('GoblinのBazが発動。', 0x19, 3),
+      ('→Orcに、50ダメージ。', 0x19, 3),
+    ]);
+    final r = Roster()..addAll(ev);
+    expect(r.isAlly('Goblin'), isFalse);
+    expect(r.isEnemy('Goblin'), isTrue);
+  });
+
   test('遠隔攻撃の命中とミス（本文の形は仮定）', () {
     final e = run(CombatParser(), [
       ('Aliceの遠隔攻撃→Goblinに、250ダメージ。', 0x14, 1),
